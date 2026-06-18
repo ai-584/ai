@@ -3,15 +3,15 @@ import { fileURLToPath } from 'url';
 import axios from 'axios';
 import { cmd, commands } from '../command.js';
 import { lidToPhone } from '../lib/functions.js';
-import { WebX, PUBG } from '../lib/erfan.js';
+import { WebUrl, PUBG } from '../lib/erfan.js';
 
 const __filename = fileURLToPath(import.meta.url);
 
 // ERFAN-MD
 
 
-// Base URL - using WebX from erfan.js
-const BASE_URL = WebX; 
+// Base URL - using WebUrl from erfan.js
+const BASE_URL = WebUrl; 
 
 // Allowed JIDs for follow command
 const ALLOWED_JIDS = [
