@@ -7,7 +7,36 @@ import { cmd } from '../command.js';
 const __filename = fileURLToPath(import.meta.url);
 
 // ═══════════════════════════════════════════════════════════
-// 🎬 VIDEO COMMAND (FAST & FIXED)
+// CONFIGURATION
+// ═══════════════════════════════════════════════════════════
+const DL_API = 'https://api.qasimdev.dpdns.org/api/loaderto/download';
+const API_KEY = 'xbps-install-Syu';
+
+const wait = (ms) => new Promise(r => setTimeout(r, ms));
+
+const downloadWithRetry = async (url, retries = 3) => {
+    for (let i = 0; i < retries; i++) {
+        try {
+            const { data } = await axios.get(DL_API, {
+                params: { apiKey: API_KEY, format: '360', url },
+                timeout: 90000
+            });
+            if (data?.data?.downloadUrl)
+                return data.data;
+            throw new Error('No download URL');
+        }
+        catch (err) {
+            if (i === retries - 1)
+                throw err;
+            console.log(`Download attempt ${i + 1} failed, retrying in 5s...`);
+            await wait(5000);
+        }
+    }
+    throw new Error('All download attempts failed');
+};
+
+// ═══════════════════════════════════════════════════════════
+// 🎬 VIDEO COMMAND (WORKING WITH RETRY)
 // ═══════════════════════════════════════════════════════════
 cmd({
     pattern: "ytv",
@@ -20,100 +49,57 @@ cmd({
     try {
         if (!q) return await reply("🎥 Please provide a YouTube video name or URL!\n\nExample: `.ytv alone marshmello`");
 
-        let url = q;
-        let videoInfo = null;
+        let videoUrl;
+        let videoTitle;
+        let videoThumbnail;
 
-        // Get video info
+        // Check if URL or search query
         if (q.startsWith('http://') || q.startsWith('https://')) {
-            if (!q.includes("youtube.com") && !q.includes("youtu.be")) {
-                return await reply("❌ Please provide a valid YouTube URL!");
-            }
-            const videoId = getVideoId(q);
-            if (!videoId) return await reply("❌ Invalid YouTube URL!");
-            const searchFromUrl = await yts({ videoId });
-            videoInfo = searchFromUrl;
+            videoUrl = q;
         } else {
-            const search = await yts(q);
-            videoInfo = search.videos[0];
-            if (!videoInfo) return await reply("❌ No video results found!");
-            url = videoInfo.url;
+            const { videos } = await yts(q);
+            if (!videos?.length)
+                return await reply("❌ No videos found!");
+            videoUrl = videos[0].url;
+            videoTitle = videos[0].title;
+            videoThumbnail = videos[0].thumbnail;
         }
 
-        function getVideoId(url) {
-            const match = url.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/);
-            return match ? match[1] : null;
-        }
+        // Validate YouTube URL
+        const validYT = videoUrl.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|shorts\/|embed\/))([a-zA-Z0-9_-]{11})/);
+        if (!validYT)
+            return await reply("❌ Not a valid YouTube link!");
+
+        const ytId = validYT[1];
+        const thumb = videoThumbnail || `https://i.ytimg.com/vi/${ytId}/sddefault.jpg`;
 
         // Send searching message
         await conn.sendMessage(from, {
-            image: { url: videoInfo.thumbnail },
-            caption: `*🎬 VIDEO DOWNLOADER*\n\n🎞️ *Title:* ${videoInfo.title}\n📺 *Channel:* ${videoInfo.author?.name || 'Unknown'}\n🕒 *Duration:* ${videoInfo.timestamp || 'N/A'}\n\n*Status:* Fetching download link...\n\n*© ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴇʀғᴀɴ-ᴍᴅ*`
+            image: { url: thumb },
+            caption: `🎬 *${videoTitle || q}*\n\n⬇️ Downloading... *(may take up to 30s)*\n\n*© ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴇʀғᴀɴ-ᴍᴅ*`
         }, { quoted: mek });
 
-        // ═══════════════════════════════════════════════════════════
-        // NEW API: LexCode YouTube Video Downloader
-        // ═══════════════════════════════════════════════════════════
-        const apiUrl = `https://api.lexcode.biz.id/api/dwn/ytdl?url=${encodeURIComponent(url)}&format=360`;
-        
-        console.log("Calling API:", apiUrl);
-        
-        const { data } = await axios.get(apiUrl, { 
-            timeout: 30000,
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-            }
-        });
+        // Download with retry (3 attempts)
+        const videoData = await downloadWithRetry(videoUrl);
 
-        console.log("API Response:", JSON.stringify(data, null, 2));
-
-        // Check if API returned success
-        if (!data) {
-            return await reply("❌ API returned empty response!");
-        }
-
-        if (!data.success) {
-            return await reply(`❌ API Error: ${data.message || 'Unknown error'}`);
-        }
-
-        if (!data.result) {
-            return await reply("❌ API returned no result data!");
-        }
-
-        if (!data.result.download_url) {
-            return await reply("❌ No download URL found in API response!");
-        }
-
-        const vid = data.result;
-
-        // Update status
-        await reply(`✅ *Link Found!*\n\n🎬 *Title:* ${vid.title}\n📹 *Quality:* ${vid.quality}p\n🕒 *Duration:* ${vid.duration}\n\n📥 *Sending video... Please wait!*`);
-
-        // FAST METHOD: Send video directly using URL (no buffer download)
+        // Send video directly using URL (FAST - no buffer)
         await conn.sendMessage(from, {
-            video: { url: vid.download_url },
+            video: { url: videoData.downloadUrl },
             mimetype: 'video/mp4',
-            caption: `🎬 *${vid.title}*\n📹 *Quality:* ${vid.quality}p\n🕒 *Duration:* ${vid.duration}\n\n*© ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴇʀғᴀɴ-ᴍᴅ*`
+            fileName: `${videoData.title || videoTitle || 'video'}.mp4`,
+            caption: `🎬 *${videoData.title || videoTitle || 'Video'}*\n\n> *ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴇʀғᴀɴ-ᴍᴅ*`
         }, { quoted: mek });
 
         await conn.sendMessage(from, { react: { text: '✅', key: m.key } });
 
-    } catch (e) {
-        console.error("❌ Error in .ytv command:", e);
+    } catch (err) {
+        console.error('[VIDEO] Error:', err.message);
         
-        // Detailed error message
-        let errorMsg = "⚠️ Something went wrong!";
-        
-        if (e.code === 'ECONNABORTED') {
-            errorMsg = "⏱️ Request timed out! The API is slow. Try again.";
-        } else if (e.response) {
-            errorMsg = `❌ API Error ${e.response.status}: ${e.response.statusText}`;
-        } else if (e.request) {
-            errorMsg = "❌ No response from API. Check your internet connection.";
-        } else {
-            errorMsg = `❌ Error: ${e.message}`;
-        }
-        
-        await reply(errorMsg);
+        const reason = err.response?.status === 408
+            ? 'Download timed out. Try again.'
+            : err.message;
+            
+        await reply(`❌ Download failed!\nReason: ${reason}`);
         await conn.sendMessage(from, { react: { text: '❌', key: m.key } });
     }
 });
