@@ -44,8 +44,8 @@ function getPinterestSearch(query) {
 }
 
 cmd({
-    pattern: "pinterest",
-    alias: ["pin", "pinsearch"],
+    pattern: "pinterestimg",
+    alias: ["pinimg", "pinsearchimg"],
     react: "📌",
     desc: "Search images on Pinterest",
     category: "search",
