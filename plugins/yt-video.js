@@ -7,36 +7,7 @@ import { cmd } from '../command.js';
 const __filename = fileURLToPath(import.meta.url);
 
 // ═══════════════════════════════════════════════════════════
-// CONFIGURATION
-// ═══════════════════════════════════════════════════════════
-const DL_API = 'https://api.qasimdev.dpdns.org/api/loaderto/download';
-const API_KEY = 'xbps-install-Syu';
-
-const wait = (ms) => new Promise(r => setTimeout(r, ms));
-
-const downloadWithRetry = async (url, retries = 3) => {
-    for (let i = 0; i < retries; i++) {
-        try {
-            const { data } = await axios.get(DL_API, {
-                params: { apiKey: API_KEY, format: '360', url },
-                timeout: 90000
-            });
-            if (data?.data?.downloadUrl)
-                return data.data;
-            throw new Error('No download URL');
-        }
-        catch (err) {
-            if (i === retries - 1)
-                throw err;
-            console.log(`Download attempt ${i + 1} failed, retrying in 5s...`);
-            await wait(5000);
-        }
-    }
-    throw new Error('All download attempts failed');
-};
-
-// ═══════════════════════════════════════════════════════════
-// 🎬 VIDEO COMMAND (WORKING WITH RETRY)
+// 🎬 VIDEO COMMAND (NEOXR API - WORKING)
 // ═══════════════════════════════════════════════════════════
 cmd({
     pattern: "ytv",
@@ -71,23 +42,47 @@ cmd({
             return await reply("❌ Not a valid YouTube link!");
 
         const ytId = validYT[1];
-        const thumb = videoThumbnail || `https://i.ytimg.com/vi/${ytId}/sddefault.jpg`;
+        const thumb = videoThumbnail || `https://i.ytimg.com/vi/${ytId}/hqdefault.jpg`;
 
         // Send searching message
         await conn.sendMessage(from, {
             image: { url: thumb },
-            caption: `🎬 *${videoTitle || q}*\n\n⬇️ Downloading... *(may take up to 30s)*\n\n*© ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴇʀғᴀɴ-ᴍᴅ*`
+            caption: `🎬 *${videoTitle || q}*\n\n⬇️ Fetching download link...\n\n*© ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴇʀғᴀɴ-ᴍᴅ*`
         }, { quoted: mek });
 
-        // Download with retry (3 attempts)
-        const videoData = await downloadWithRetry(videoUrl);
+        // ═══════════════════════════════════════════════════════════
+        // NEW API: NeoXR YouTube Video Downloader
+        // ═══════════════════════════════════════════════════════════
+        const apiUrl = `https://api.neoxr.eu/api/video?q=${encodeURIComponent(videoUrl)}&apikey=0SqqRR`;
+        
+        console.log("Calling NeoXR API:", apiUrl);
+        
+        const { data } = await axios.get(apiUrl, { 
+            timeout: 60000,
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            }
+        });
 
-        // Send video directly using URL (FAST - no buffer)
+        console.log("NeoXR API Response:", JSON.stringify(data, null, 2));
+
+        // Validate API response
+        if (!data || !data.status) {
+            return await reply(`❌ API Error: ${data?.msg || 'Failed to fetch video'}`);
+        }
+
+        if (!data.data || !data.data.url) {
+            return await reply("❌ No download URL found in API response!");
+        }
+
+        const vid = data.data;
+
+        // Send video directly using URL (FAST - no buffer download)
         await conn.sendMessage(from, {
-            video: { url: videoData.downloadUrl },
+            video: { url: vid.url },
             mimetype: 'video/mp4',
-            fileName: `${videoData.title || videoTitle || 'video'}.mp4`,
-            caption: `🎬 *${videoData.title || videoTitle || 'Video'}*\n\n> *ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴇʀғᴀɴ-ᴍᴅ*`
+            fileName: vid.filename || `${data.title || 'video'}.mp4`,
+            caption: `🎬 *${data.title || videoTitle || 'Video'}*\n📹 *Quality:* ${vid.quality}\n📦 *Size:* ${vid.size}\n🕒 *Duration:* ${data.fduration || data.duration}\n\n> *ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴇʀғᴀɴ-ᴍᴅ*`
         }, { quoted: mek });
 
         await conn.sendMessage(from, { react: { text: '✅', key: m.key } });
@@ -95,9 +90,9 @@ cmd({
     } catch (err) {
         console.error('[VIDEO] Error:', err.message);
         
-        const reason = err.response?.status === 408
-            ? 'Download timed out. Try again.'
-            : err.message;
+        const reason = err.code === 'ECONNABORTED'
+            ? 'Request timed out. Try again.'
+            : err.response?.data?.msg || err.message;
             
         await reply(`❌ Download failed!\nReason: ${reason}`);
         await conn.sendMessage(from, { react: { text: '❌', key: m.key } });
