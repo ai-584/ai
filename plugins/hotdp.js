@@ -42,7 +42,7 @@ function getPinterestSearch(query) {
 
 cmd({
     pattern: "hotdp",
-    alias: ["", ""],
+    alias: ["hotdp", "hotdp"],
     react: "📌",
     desc: "Search images on hot girl",
     category: "search",
