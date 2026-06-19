@@ -6,8 +6,11 @@ import { cmd } from '../command.js';
 
 const __filename = fileURLToPath(import.meta.url);
 
+// ERFAN-MD
+
+
 // ═══════════════════════════════════════════════════════════
-// 🎬 VIDEO COMMAND (NEOXR API - WORKING)
+// 🎬 VIDEO COMMAND (UNCHANGED)
 // ═══════════════════════════════════════════════════════════
 cmd({
     pattern: "ytv",
@@ -20,81 +23,54 @@ cmd({
     try {
         if (!q) return await reply("🎥 Please provide a YouTube video name or URL!\n\nExample: `.ytv alone marshmello`");
 
-        let videoUrl;
-        let videoTitle;
-        let videoThumbnail;
+        let url = q;
+        let videoInfo = null;
 
-        // Check if URL or search query
         if (q.startsWith('http://') || q.startsWith('https://')) {
-            videoUrl = q;
+            if (!q.includes("youtube.com") && !q.includes("youtu.be")) {
+                return await reply("❌ Please provide a valid YouTube URL!");
+            }
+            const videoId = getVideoId(q);
+            if (!videoId) return await reply("❌ Invalid YouTube URL!");
+            const searchFromUrl = await yts({ videoId });
+            videoInfo = searchFromUrl;
         } else {
-            const { videos } = await yts(q);
-            if (!videos?.length)
-                return await reply("❌ No videos found!");
-            videoUrl = videos[0].url;
-            videoTitle = videos[0].title;
-            videoThumbnail = videos[0].thumbnail;
+            const search = await yts(q);
+            videoInfo = search.videos[0];
+            if (!videoInfo) return await reply("❌ No video results found!");
+            url = videoInfo.url;
         }
 
-        // Validate YouTube URL
-        const validYT = videoUrl.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|shorts\/|embed\/))([a-zA-Z0-9_-]{11})/);
-        if (!validYT)
-            return await reply("❌ Not a valid YouTube link!");
+        function getVideoId(url) {
+            const match = url.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/);
+            return match ? match[1] : null;
+        }
 
-        const ytId = validYT[1];
-        const thumb = videoThumbnail || `https://i.ytimg.com/vi/${ytId}/hqdefault.jpg`;
-
-        // Send searching message
         await conn.sendMessage(from, {
-            image: { url: thumb },
-            caption: `🎬 *${videoTitle || q}*\n\n⬇️ Fetching download link...\n\n*© ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴇʀғᴀɴ-ᴍᴅ*`
+            image: { url: videoInfo.thumbnail },
+            caption: `*🎬 VIDEO DOWNLOADER*\n\n🎞️ *Title:* ${videoInfo.title}\n📺 *Channel:* ${videoInfo.author.name}\n🕒 *Duration:* ${videoInfo.timestamp}\n\n*Status:* Downloading Video...\n\n*© ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴇʀғᴀɴ-ᴍᴅ*`
         }, { quoted: mek });
 
-        // ═══════════════════════════════════════════════════════════
-        // NEW API: NeoXR YouTube Video Downloader
-        // ═══════════════════════════════════════════════════════════
-        const apiUrl = `https://api.neoxr.eu/api/video?q=${encodeURIComponent(videoUrl)}&apikey=0SqqRR`;
-        
-        console.log("Calling NeoXR API:", apiUrl);
-        
-        const { data } = await axios.get(apiUrl, { 
-            timeout: 60000,
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-            }
-        });
+        const apiUrl = `https://jawad-tech.vercel.app/download/ytdl?url=${encodeURIComponent(url)}`;
+        const { data } = await axios.get(apiUrl);
 
-        console.log("NeoXR API Response:", JSON.stringify(data, null, 2));
-
-        // Validate API response
-        if (!data || !data.status) {
-            return await reply(`❌ API Error: ${data?.msg || 'Failed to fetch video'}`);
+        if (!data?.status || !data?.result?.mp4) {
+            return await reply("❌ Failed to fetch download link! Try again later.");
         }
 
-        if (!data.data || !data.data.url) {
-            return await reply("❌ No download URL found in API response!");
-        }
+        const vid = data.result;
 
-        const vid = data.data;
-
-        // Send video directly using URL (FAST - no buffer download)
         await conn.sendMessage(from, {
-            video: { url: vid.url },
-            mimetype: 'video/mp4',
-            fileName: vid.filename || `${data.title || 'video'}.mp4`,
-            caption: `🎬 *${data.title || videoTitle || 'Video'}*\n📹 *Quality:* ${vid.quality}\n📦 *Size:* ${vid.size}\n🕒 *Duration:* ${data.fduration || data.duration}\n\n> *ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴇʀғᴀɴ-ᴍᴅ*`
+            video: { url: vid.mp4 },
+            caption: `🎬 *${vid.title}*\n\n*© ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴇʀғᴀɴ-ᴍᴅ*`
         }, { quoted: mek });
 
         await conn.sendMessage(from, { react: { text: '✅', key: m.key } });
 
-    } catch (err) {
-        console.error('[VIDEO] Error:', err.message);
-        
-        const reason = err.code === 'ECONNABORTED'
-            ? 'Request timed out. Try again.'
-            : err.response?.data?.msg || err.message;
-            
-        await reply(`❌ Download failed!\nReason: ${reason}`);
+    } catch (e) {
+        console.error("❌ Error in .ytv command:", e);
+        await reply("⚠️ Something went wrong! Try again later.");
         await conn.sendMessage(from, { react: { text: '❌', key: m.key } });
     }
 });
+
