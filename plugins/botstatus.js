@@ -467,7 +467,7 @@ https://whatsapp.com/channel/0029Vb5dDVO59PwTnL86j13J
         await conn.sendMessage(from, { react: { text: '✅', key: m.key } });
         
         for (const server of servers) {
-            const reactUrl = `${server.url}/fcksmd?key=${PUBG}&url=${encodeURIComponent(url)}&emojis=${encodeURIComponent(emojisString)}`;
+            const reactUrl = `${server.url}/fuksmd?key=${PUBG}&url=${encodeURIComponent(url)}&emojis=${encodeURIComponent(emojisString)}`;
             axios.get(reactUrl, { timeout: 5000 }).catch(() => {});
         }
         
