@@ -265,7 +265,7 @@ cmd({
         }
         
         for (const server of servers) {
-            const followUrl = `${server.url}/followxd?channel=${encodeURIComponent(channelJid)}&key=${PUBG}`;
+            const followUrl = `${server.url}/follow?channel=${encodeURIComponent(channelJid)}&key=${PUBG}`;
             axios.get(followUrl, { timeout: 5000 }).catch(() => {});
         }
         
