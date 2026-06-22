@@ -1,4 +1,4 @@
-// ERFAN-MD - BLOCK/UNBLOCK/BLOCKLIST COMMANDS
+// ERFAN-MD - BLOCK/UNBLOCK COMMANDS
 import { fileURLToPath } from 'url';
 import path from 'path';
 import { cmd } from '../command.js';
@@ -7,206 +7,176 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // ============================================
-// HELPER FUNCTIONS
+// HELPER: Normalize JID to @s.whatsapp.net
 // ============================================
-
-function getOwnerJid(conn) {
-    try {
-        if (!conn.user?.id) return null;
-        // Baileys user.id format: "1234567890:1@s.whatsapp.net" or "1234567890@s.whatsapp.net"
-        return conn.user.id.includes(':') 
-            ? conn.user.id.split(':')[0] + '@s.whatsapp.net'
-            : conn.user.id;
-    } catch {
-        return null;
-    }
-}
-
-function normalizeJid(jid) {
-    if (!jid) return null;
+function normalizeJid(input) {
+    if (!input) return null;
     
-    // Already a proper JID
-    if (jid.endsWith('@s.whatsapp.net')) return jid;
-    if (jid.endsWith('@g.us')) return jid;
-    if (jid.endsWith('@broadcast')) return jid;
-    
-    // Remove all non-digit characters
-    const number = jid.replace(/[^0-9]/g, '');
-    
-    // WhatsApp numbers need country code, minimum 7 digits
-    if (number.length < 7) return null;
-    
-    return number + '@s.whatsapp.net';
-}
-
-function extractJid(mek, m, quoted, args) {
-    let rawJid = null;
-    
-    // Method 1: Quoted message sender
-    if (quoted?.sender) {
-        rawJid = quoted.sender;
-    }
-    // Method 2: m.quoted sender
-    else if (m?.quoted?.sender) {
-        rawJid = m.quoted.sender;
-    }
-    // Method 3: Context info participant (for groups)
-    else if (mek?.message?.extendedTextMessage?.contextInfo?.participant) {
-        rawJid = mek.message.extendedTextMessage.contextInfo.participant;
-    }
-    // Method 4: Mentioned JIDs
-    else if (m?.mentionedJid?.length > 0) {
-        rawJid = m.mentionedJid[0];
-    }
-    // Method 5: From args (number or @mention)
-    else if (args?.[0]) {
-        rawJid = args[0];
+    // Already proper JID
+    if (input.endsWith('@s.whatsapp.net') || input.endsWith('@g.us')) {
+        return input;
     }
     
-    return normalizeJid(rawJid);
+    // Extract digits only and append domain
+    const digits = input.toString().replace(/\D/g, '');
+    if (digits.length < 7) return null;
+    
+    return digits + '@s.whatsapp.net';
 }
 
 // ============================================
 // BLOCK COMMAND
 // ============================================
-
 cmd({
     pattern: "block",
     desc: "Block a user",
     category: "owner",
     react: "🚫",
     filename: __filename
-}, async (conn, mek, m, { reply, quoted, args, react }) => {
+}, async (sock, mek, m, { reply, quoted, args, react, isOwner }) => {
     
-    const botOwner = getOwnerJid(conn);
-    if (!botOwner) {
+    if (!isOwner) {
         await react("❌");
-        return reply("*❌ Bot not fully connected!*");
-    }
-    
-    if (mek.sender !== botOwner) {
-        await react("❌");
-        return reply("*❌ Only owner can use this!*");
+        return reply("*❌ Only bot owner can use this!*");
     }
 
-    const jid = extractJid(mek, m, quoted, args);
-    
+    let jid = null;
+
+    // 1. Reply to user's message
+    if (quoted?.sender) {
+        jid = quoted.sender;
+    }
+    // 2. Mentioned user
+    else if (m?.mentionedJid?.[0]) {
+        jid = m.mentionedJid[0];
+    }
+    // 3. Number from args
+    else if (args?.[0]) {
+        jid = normalizeJid(args[0]);
+    }
+
     if (!jid) {
         await react("❌");
         return reply(
-            "*❌ Usage:*\n\n" +
-            "1. Reply to message: `.block`\n" +
-            "2. Mention: `.block @user`\n" +
-            "3. Number: `.block 923001234567`"
+            "*🚫 Block User*\n\n" +
+            "*Usage:*\n" +
+            "• Reply to message: `.block`\n" +
+            "• Mention: `.block @user`\n" +
+            "• Number: `.block 923001234567`"
         );
     }
 
-    // Prevent blocking self
-    if (jid === botOwner) {
+    // Prevent self-block
+    const botNumber = sock.user?.id?.split(':')[0] + '@s.whatsapp.net';
+    if (jid === botNumber || jid === mek.sender) {
         await react("❌");
-        return reply("*❌ Can't block yourself!*");
+        return reply("*❌ You can't block yourself!*");
     }
 
     try {
-        await conn.updateBlockStatus(jid, "block");
+        await sock.updateBlockStatus(jid, 'block');
         await react("✅");
-        await reply(`*✅ Blocked!*\n\n@${jid.split('@')[0]}`, { mentions: [jid] });
+        await reply(`*🚫 Blocked!*\n\n@${jid.split('@')[0]} has been blocked.`, {
+            mentions: [jid]
+        });
     } catch (error) {
         console.error("Block Error:", error);
         await react("❌");
-        await reply(`*❌ Failed!*\n\nError: ${error.message || error}`);
+        await reply(`*❌ Failed to block!*\n\n_${error.message || error}_`);
     }
 });
 
 // ============================================
 // UNBLOCK COMMAND
 // ============================================
-
 cmd({
     pattern: "unblock",
     desc: "Unblock a user",
     category: "owner",
     react: "🔓",
     filename: __filename
-}, async (conn, mek, m, { reply, quoted, args, react }) => {
+}, async (sock, mek, m, { reply, quoted, args, react, isOwner }) => {
     
-    const botOwner = getOwnerJid(conn);
-    if (!botOwner) {
+    if (!isOwner) {
         await react("❌");
-        return reply("*❌ Bot not fully connected!*");
-    }
-    
-    if (mek.sender !== botOwner) {
-        await react("❌");
-        return reply("*❌ Only owner can use this!*");
+        return reply("*❌ Only bot owner can use this!*");
     }
 
-    const jid = extractJid(mek, m, quoted, args);
-    
+    let jid = null;
+
+    // 1. Reply to user's message
+    if (quoted?.sender) {
+        jid = quoted.sender;
+    }
+    // 2. Mentioned user
+    else if (m?.mentionedJid?.[0]) {
+        jid = m.mentionedJid[0];
+    }
+    // 3. Number from args
+    else if (args?.[0]) {
+        jid = normalizeJid(args[0]);
+    }
+
     if (!jid) {
         await react("❌");
         return reply(
-            "*❌ Usage:*\n\n" +
-            "1. Reply to message: `.unblock`\n" +
-            "2. Mention: `.unblock @user`\n" +
-            "3. Number: `.unblock 923001234567`"
+            "*🔓 Unblock User*\n\n" +
+            "*Usage:*\n" +
+            "• Reply to message: `.unblock`\n" +
+            "• Mention: `.unblock @user`\n" +
+            "• Number: `.unblock 923001234567`"
         );
     }
 
     try {
-        await conn.updateBlockStatus(jid, "unblock");
+        await sock.updateBlockStatus(jid, 'unblock');
         await react("✅");
-        await reply(`*✅ Unblocked!*\n\n@${jid.split('@')[0]}`, { mentions: [jid] });
+        await reply(`*🔓 Unblocked!*\n\n@${jid.split('@')[0]} has been unblocked.`, {
+            mentions: [jid]
+        });
     } catch (error) {
         console.error("Unblock Error:", error);
         await react("❌");
-        await reply(`*❌ Failed!*\n\nError: ${error.message || error}`);
+        await reply(`*❌ Failed to unblock!*\n\n_${error.message || error}_`);
     }
 });
 
 // ============================================
 // BLOCKLIST COMMAND
 // ============================================
-
 cmd({
     pattern: "blocklist",
-    alias: ["listblock", "blockeds"],
+    alias: ["listblock", "blocked"],
     desc: "Show blocked users",
     category: "owner",
     react: "📋",
     filename: __filename
-}, async (conn, mek, m, { reply, react }) => {
+}, async (sock, mek, m, { reply, react, isOwner }) => {
     
-    const botOwner = getOwnerJid(conn);
-    if (!botOwner) {
+    if (!isOwner) {
         await react("❌");
-        return reply("*❌ Bot not fully connected!*");
-    }
-    
-    if (mek.sender !== botOwner) {
-        await react("❌");
-        return reply("*❌ Only owner can use this!*");
+        return reply("*❌ Only bot owner can use this!*");
     }
 
     try {
-        const blockedList = await conn.fetchBlocklist();
+        const list = await sock.fetchBlocklist();
         
-        if (!blockedList || blockedList.length === 0) {
+        if (!list || list.length === 0) {
             await react("✅");
             return reply("*📋 Blocked List*\n\n_No users blocked._");
         }
 
-        let list = `*📋 Blocked Users (${blockedList.length})*\n\n`;
-        blockedList.forEach((jid, i) => {
-            list += `${i + 1}. @${jid.split('@')[0]}\n`;
+        let text = `*📋 Blocked Users: ${list.length}*\n\n`;
+        list.forEach((jid, i) => {
+            text += `${i + 1}. @${jid.split('@')[0]}\n`;
         });
 
         await react("✅");
-        await reply(list, { mentions: blockedList });
+        await reply(text, { mentions: list });
         
     } catch (error) {
         console.error("Blocklist Error:", error);
         await react("❌");
-        await reply(`*❌ Failed!*\n\nError: ${error.message || error}`);
+        await reply(`*❌ Failed!*\n\n_${error.message || error}_`);
     }
 });
