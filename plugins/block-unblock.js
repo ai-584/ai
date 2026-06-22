@@ -6,36 +6,64 @@ import { cmd } from '../command.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Helper to get owner JID safely
+// ============================================
+// HELPER FUNCTIONS
+// ============================================
+
 function getOwnerJid(conn) {
     try {
         if (!conn.user?.id) return null;
-        return conn.user.id.split(":")[0] + "@s.whatsapp.net";
+        // Baileys user.id format: "1234567890:1@s.whatsapp.net" or "1234567890@s.whatsapp.net"
+        return conn.user.id.includes(':') 
+            ? conn.user.id.split(':')[0] + '@s.whatsapp.net'
+            : conn.user.id;
     } catch {
         return null;
     }
 }
 
-// Helper to get JID from various sources
-function extractJid(mek, m, quoted, args) {
-    let jid = null;
+function normalizeJid(jid) {
+    if (!jid) return null;
     
+    // Already a proper JID
+    if (jid.endsWith('@s.whatsapp.net')) return jid;
+    if (jid.endsWith('@g.us')) return jid;
+    if (jid.endsWith('@broadcast')) return jid;
+    
+    // Remove all non-digit characters
+    const number = jid.replace(/[^0-9]/g, '');
+    
+    // WhatsApp numbers need country code, minimum 7 digits
+    if (number.length < 7) return null;
+    
+    return number + '@s.whatsapp.net';
+}
+
+function extractJid(mek, m, quoted, args) {
+    let rawJid = null;
+    
+    // Method 1: Quoted message sender
     if (quoted?.sender) {
-        jid = quoted.sender;
-    } else if (m?.quoted?.sender) {
-        jid = m.quoted.sender;
-    } else if (mek?.message?.extendedTextMessage?.contextInfo?.participant) {
-        jid = mek.message.extendedTextMessage.contextInfo.participant;
-    } else if (m?.mentionedJid?.length > 0) {
-        jid = m.mentionedJid[0];
-    } else if (args?.[0]) {
-        const clean = args[0].replace(/[^0-9]/g, '');
-        if (clean.length > 5) {
-            jid = clean + "@s.whatsapp.net";
-        }
+        rawJid = quoted.sender;
+    }
+    // Method 2: m.quoted sender
+    else if (m?.quoted?.sender) {
+        rawJid = m.quoted.sender;
+    }
+    // Method 3: Context info participant (for groups)
+    else if (mek?.message?.extendedTextMessage?.contextInfo?.participant) {
+        rawJid = mek.message.extendedTextMessage.contextInfo.participant;
+    }
+    // Method 4: Mentioned JIDs
+    else if (m?.mentionedJid?.length > 0) {
+        rawJid = m.mentionedJid[0];
+    }
+    // Method 5: From args (number or @mention)
+    else if (args?.[0]) {
+        rawJid = args[0];
     }
     
-    return jid;
+    return normalizeJid(rawJid);
 }
 
 // ============================================
@@ -46,46 +74,47 @@ cmd({
     pattern: "block",
     desc: "Block a user",
     category: "owner",
-    react: "💯",
+    react: "🚫",
     filename: __filename
 }, async (conn, mek, m, { reply, quoted, args, react }) => {
     
     const botOwner = getOwnerJid(conn);
     if (!botOwner) {
         await react("❌");
-        return reply("*❌ Bot not fully connected yet!*");
+        return reply("*❌ Bot not fully connected!*");
     }
     
     if (mek.sender !== botOwner) {
         await react("❌");
-        return reply("*❌ Only bot owner can use this command!*");
+        return reply("*❌ Only owner can use this!*");
     }
 
     const jid = extractJid(mek, m, quoted, args);
     
     if (!jid) {
         await react("❌");
-        return reply("*❌ Usage:*\n\n1. Reply to user's message\n2. Mention user: `.block @user`\n3. Type number: `.block 923001234567`");
+        return reply(
+            "*❌ Usage:*\n\n" +
+            "1. Reply to message: `.block`\n" +
+            "2. Mention: `.block @user`\n" +
+            "3. Number: `.block 923001234567`"
+        );
     }
 
-    // Check if method exists
-    if (typeof conn.updateBlockStatus !== 'function') {
-        console.error("ERROR: conn.updateBlockStatus is not a function");
-        console.log("Available conn methods:", Object.keys(conn).filter(k => k.toLowerCase().includes('block')));
+    // Prevent blocking self
+    if (jid === botOwner) {
         await react("❌");
-        return reply("*❌ This bot version doesn't support blocking!*");
+        return reply("*❌ Can't block yourself!*");
     }
 
     try {
         await conn.updateBlockStatus(jid, "block");
         await react("✅");
-        await reply(`*✅ Blocked!*\n\n@${jid.split("@")[0]} has been blocked.`, { 
-            mentions: [jid] 
-        });
+        await reply(`*✅ Blocked!*\n\n@${jid.split('@')[0]}`, { mentions: [jid] });
     } catch (error) {
         console.error("Block Error:", error);
         await react("❌");
-        await reply(`*❌ Failed to block user!*\n\nError: ${error.message}`);
+        await reply(`*❌ Failed!*\n\nError: ${error.message || error}`);
     }
 });
 
@@ -104,36 +133,34 @@ cmd({
     const botOwner = getOwnerJid(conn);
     if (!botOwner) {
         await react("❌");
-        return reply("*❌ Bot not fully connected yet!*");
+        return reply("*❌ Bot not fully connected!*");
     }
     
     if (mek.sender !== botOwner) {
         await react("❌");
-        return reply("*❌ Only bot owner can use this command!*");
+        return reply("*❌ Only owner can use this!*");
     }
 
     const jid = extractJid(mek, m, quoted, args);
     
     if (!jid) {
         await react("❌");
-        return reply("*❌ Usage:*\n\n1. Reply to user's message\n2. Mention user: `.unblock @user`\n3. Type number: `.unblock 923001234567`");
-    }
-
-    if (typeof conn.updateBlockStatus !== 'function') {
-        await react("❌");
-        return reply("*❌ This bot version doesn't support unblocking!*");
+        return reply(
+            "*❌ Usage:*\n\n" +
+            "1. Reply to message: `.unblock`\n" +
+            "2. Mention: `.unblock @user`\n" +
+            "3. Number: `.unblock 923001234567`"
+        );
     }
 
     try {
         await conn.updateBlockStatus(jid, "unblock");
         await react("✅");
-        await reply(`*✅ Unblocked!*\n\n@${jid.split("@")[0]} has been unblocked.`, { 
-            mentions: [jid] 
-        });
+        await reply(`*✅ Unblocked!*\n\n@${jid.split('@')[0]}`, { mentions: [jid] });
     } catch (error) {
         console.error("Unblock Error:", error);
         await react("❌");
-        await reply(`*❌ Failed to unblock user!*\n\nError: ${error.message}`);
+        await reply(`*❌ Failed!*\n\nError: ${error.message || error}`);
     }
 });
 
@@ -143,8 +170,8 @@ cmd({
 
 cmd({
     pattern: "blocklist",
-    alias: ["listblock", "blocked"],
-    desc: "Show list of blocked users",
+    alias: ["listblock", "blockeds"],
+    desc: "Show blocked users",
     category: "owner",
     react: "📋",
     filename: __filename
@@ -153,20 +180,12 @@ cmd({
     const botOwner = getOwnerJid(conn);
     if (!botOwner) {
         await react("❌");
-        return reply("*❌ Bot not fully connected yet!*");
+        return reply("*❌ Bot not fully connected!*");
     }
     
     if (mek.sender !== botOwner) {
         await react("❌");
-        return reply("*❌ Only bot owner can use this command!*");
-    }
-
-    // Check if fetchBlocklist exists
-    if (typeof conn.fetchBlocklist !== 'function') {
-        console.error("ERROR: conn.fetchBlocklist is not a function");
-        console.log("Available conn methods:", Object.keys(conn).filter(k => k.toLowerCase().includes('block')));
-        await react("❌");
-        return reply("*❌ This bot version doesn't support fetching blocklist!*");
+        return reply("*❌ Only owner can use this!*");
     }
 
     try {
@@ -174,12 +193,12 @@ cmd({
         
         if (!blockedList || blockedList.length === 0) {
             await react("✅");
-            return reply("*📋 Blocked List*\n\n_No users are currently blocked._");
+            return reply("*📋 Blocked List*\n\n_No users blocked._");
         }
 
-        let list = `*📋 Blocked Users*\n\n*Total:* ${blockedList.length}\n\n`;
-        blockedList.forEach((jid, index) => {
-            list += `${index + 1}. @${jid.split("@")[0]}\n`;
+        let list = `*📋 Blocked Users (${blockedList.length})*\n\n`;
+        blockedList.forEach((jid, i) => {
+            list += `${i + 1}. @${jid.split('@')[0]}\n`;
         });
 
         await react("✅");
@@ -188,6 +207,6 @@ cmd({
     } catch (error) {
         console.error("Blocklist Error:", error);
         await react("❌");
-        await reply(`*❌ Failed to fetch blocked list!*\n\nError: ${error.message}`);
+        await reply(`*❌ Failed!*\n\nError: ${error.message || error}`);
     }
 });
