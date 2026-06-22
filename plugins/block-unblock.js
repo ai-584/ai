@@ -1,79 +1,96 @@
-// ERFAN-MD
+// ERFAN-MD - BLOCK/UNBLOCK/BLOCKLIST COMMANDS
 import { fileURLToPath } from 'url';
 import path from 'path';
 import { cmd } from '../command.js';
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Helper to get owner JID safely
+function getOwnerJid(conn) {
+    try {
+        if (!conn.user?.id) return null;
+        return conn.user.id.split(":")[0] + "@s.whatsapp.net";
+    } catch {
+        return null;
+    }
+}
+
+// Helper to get JID from various sources
+function extractJid(mek, m, quoted, args) {
+    let jid = null;
+    
+    if (quoted?.sender) {
+        jid = quoted.sender;
+    } else if (m?.quoted?.sender) {
+        jid = m.quoted.sender;
+    } else if (mek?.message?.extendedTextMessage?.contextInfo?.participant) {
+        jid = mek.message.extendedTextMessage.contextInfo.participant;
+    } else if (m?.mentionedJid?.length > 0) {
+        jid = m.mentionedJid[0];
+    } else if (args?.[0]) {
+        const clean = args[0].replace(/[^0-9]/g, '');
+        if (clean.length > 5) {
+            jid = clean + "@s.whatsapp.net";
+        }
+    }
+    
+    return jid;
+}
+
 // ============================================
-// BLOCK COMMAND - FIXED VERSION
+// BLOCK COMMAND
 // ============================================
 
 cmd({
     pattern: "block",
     desc: "Block a user",
     category: "owner",
-    react: "🚫",
+    react: "💯",
     filename: __filename
 }, async (conn, mek, m, { reply, quoted, args, react }) => {
     
-    // Check if owner
-    const botOwner = conn.user.id.split(":")[0] + "@s.whatsapp.net";
+    const botOwner = getOwnerJid(conn);
+    if (!botOwner) {
+        await react("❌");
+        return reply("*❌ Bot not fully connected yet!*");
+    }
+    
     if (mek.sender !== botOwner) {
         await react("❌");
         return reply("*❌ Only bot owner can use this command!*");
     }
 
-    let jid;
-
-    // Method 1: Check quoted from handler
-    if (quoted && quoted.sender) {
-        jid = quoted.sender;
-    }
-    // Method 2: Check m.quoted
-    else if (m.quoted && m.quoted.sender) {
-        jid = m.quoted.sender;
-    }
-    // Method 3: Check message context directly
-    else if (mek.message?.extendedTextMessage?.contextInfo?.participant) {
-        jid = mek.message.extendedTextMessage.contextInfo.participant;
-    }
-    // Method 4: Check mentioned users
-    else if (m.mentionedJid && m.mentionedJid.length > 0) {
-        jid = m.mentionedJid[0];
-    }
-    // Method 5: Manual JID from text
-    else if (args[0]) {
-        // Handle @mention format
-        if (args[0].includes("@")) {
-            jid = args[0].replace(/[@\s]/g, '') + "@s.whatsapp.net";
-        } 
-        // Handle plain number
-        else {
-            jid = args[0].replace(/[^0-9]/g, '') + "@s.whatsapp.net";
-        }
-    }
-    else {
+    const jid = extractJid(mek, m, quoted, args);
+    
+    if (!jid) {
         await react("❌");
-        return reply("*❌ Usage:*\n\n1. Reply to user's message\n2. Mention user with @\n3. Type number: `.block 923001234567`");
+        return reply("*❌ Usage:*\n\n1. Reply to user's message\n2. Mention user: `.block @user`\n3. Type number: `.block 923001234567`");
+    }
+
+    // Check if method exists
+    if (typeof conn.updateBlockStatus !== 'function') {
+        console.error("ERROR: conn.updateBlockStatus is not a function");
+        console.log("Available conn methods:", Object.keys(conn).filter(k => k.toLowerCase().includes('block')));
+        await react("❌");
+        return reply("*❌ This bot version doesn't support blocking!*");
     }
 
     try {
-        // Block the user
         await conn.updateBlockStatus(jid, "block");
         await react("✅");
-        await reply(`*✅ Successfully blocked!*\n\n@${jid.split("@")[0]} has been blocked.`, { 
+        await reply(`*✅ Blocked!*\n\n@${jid.split("@")[0]} has been blocked.`, { 
             mentions: [jid] 
         });
     } catch (error) {
         console.error("Block Error:", error);
         await react("❌");
-        await reply("*❌ Failed to block user!*\n\n_Error: " + error.message + "_");
+        await reply(`*❌ Failed to block user!*\n\nError: ${error.message}`);
     }
 });
 
 // ============================================
-// UNBLOCK COMMAND - FIXED VERSION
+// UNBLOCK COMMAND
 // ============================================
 
 cmd({
@@ -84,63 +101,44 @@ cmd({
     filename: __filename
 }, async (conn, mek, m, { reply, quoted, args, react }) => {
     
-    // Check if owner
-    const botOwner = conn.user.id.split(":")[0] + "@s.whatsapp.net";
+    const botOwner = getOwnerJid(conn);
+    if (!botOwner) {
+        await react("❌");
+        return reply("*❌ Bot not fully connected yet!*");
+    }
+    
     if (mek.sender !== botOwner) {
         await react("❌");
         return reply("*❌ Only bot owner can use this command!*");
     }
 
-    let jid;
-
-    // Method 1: Check quoted from handler
-    if (quoted && quoted.sender) {
-        jid = quoted.sender;
-    }
-    // Method 2: Check m.quoted
-    else if (m.quoted && m.quoted.sender) {
-        jid = m.quoted.sender;
-    }
-    // Method 3: Check message context directly
-    else if (mek.message?.extendedTextMessage?.contextInfo?.participant) {
-        jid = mek.message.extendedTextMessage.contextInfo.participant;
-    }
-    // Method 4: Check mentioned users
-    else if (m.mentionedJid && m.mentionedJid.length > 0) {
-        jid = m.mentionedJid[0];
-    }
-    // Method 5: Manual JID from text
-    else if (args[0]) {
-        // Handle @mention format
-        if (args[0].includes("@")) {
-            jid = args[0].replace(/[@\s]/g, '') + "@s.whatsapp.net";
-        } 
-        // Handle plain number
-        else {
-            jid = args[0].replace(/[^0-9]/g, '') + "@s.whatsapp.net";
-        }
-    }
-    else {
+    const jid = extractJid(mek, m, quoted, args);
+    
+    if (!jid) {
         await react("❌");
-        return reply("*❌ Usage:*\n\n1. Reply to user's message\n2. Mention user with @\n3. Type number: `.unblock 923001234567`");
+        return reply("*❌ Usage:*\n\n1. Reply to user's message\n2. Mention user: `.unblock @user`\n3. Type number: `.unblock 923001234567`");
+    }
+
+    if (typeof conn.updateBlockStatus !== 'function') {
+        await react("❌");
+        return reply("*❌ This bot version doesn't support unblocking!*");
     }
 
     try {
-        // Unblock the user
         await conn.updateBlockStatus(jid, "unblock");
         await react("✅");
-        await reply(`*✅ Successfully unblocked!*\n\n@${jid.split("@")[0]} has been unblocked.`, { 
+        await reply(`*✅ Unblocked!*\n\n@${jid.split("@")[0]} has been unblocked.`, { 
             mentions: [jid] 
         });
     } catch (error) {
         console.error("Unblock Error:", error);
         await react("❌");
-        await reply("*❌ Failed to unblock user!*\n\n_Error: " + error.message + "_");
+        await reply(`*❌ Failed to unblock user!*\n\nError: ${error.message}`);
     }
 });
 
 // ============================================
-// BLOCK LIST COMMAND (BONUS)
+// BLOCKLIST COMMAND
 // ============================================
 
 cmd({
@@ -152,15 +150,26 @@ cmd({
     filename: __filename
 }, async (conn, mek, m, { reply, react }) => {
     
-    // Check if owner
-    const botOwner = conn.user.id.split(":")[0] + "@s.whatsapp.net";
+    const botOwner = getOwnerJid(conn);
+    if (!botOwner) {
+        await react("❌");
+        return reply("*❌ Bot not fully connected yet!*");
+    }
+    
     if (mek.sender !== botOwner) {
         await react("❌");
         return reply("*❌ Only bot owner can use this command!*");
     }
 
+    // Check if fetchBlocklist exists
+    if (typeof conn.fetchBlocklist !== 'function') {
+        console.error("ERROR: conn.fetchBlocklist is not a function");
+        console.log("Available conn methods:", Object.keys(conn).filter(k => k.toLowerCase().includes('block')));
+        await react("❌");
+        return reply("*❌ This bot version doesn't support fetching blocklist!*");
+    }
+
     try {
-        // Fetch blocked contacts
         const blockedList = await conn.fetchBlocklist();
         
         if (!blockedList || blockedList.length === 0) {
@@ -168,9 +177,7 @@ cmd({
             return reply("*📋 Blocked List*\n\n_No users are currently blocked._");
         }
 
-        let list = "*📋 Blocked Users List*\n\n";
-        list += `*Total:* ${blockedList.length}\n\n`;
-        
+        let list = `*📋 Blocked Users*\n\n*Total:* ${blockedList.length}\n\n`;
         blockedList.forEach((jid, index) => {
             list += `${index + 1}. @${jid.split("@")[0]}\n`;
         });
@@ -181,6 +188,6 @@ cmd({
     } catch (error) {
         console.error("Blocklist Error:", error);
         await react("❌");
-        await reply("*❌ Failed to fetch blocked list!*");
+        await reply(`*❌ Failed to fetch blocked list!*\n\nError: ${error.message}`);
     }
 });
