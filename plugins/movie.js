@@ -1,14 +1,14 @@
 // ERFAN-MD
 import { fileURLToPath } from 'url';
 import path from 'path';
-import axios from 'axios';
+import fetch from 'node-fetch';
 import { cmd } from '../command.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 cmd({
     pattern: "dubai",
-    alias: ["todubai", "dubaifilter", "dubaibg"],
+    alias: ["todubai", "dubaifilter"],
     react: "🏙️",
     desc: "Apply Dubai filter to any image",
     category: "image",
@@ -17,88 +17,56 @@ cmd({
 },
 async (conn, mek, m, { from, reply, text }) => {
     try {
-        // Must provide URL
         if (!text || text.trim().length === 0) {
-            return reply("📝 Please provide an image URL!\n\n*Usage:* `.dubai <image_url>`\n\n*Example:*\n`.dubai https://i.ibb.co/abc.jpg`\n`.dubai i.ibb.co/abc.jpg`");
+            return reply("📝 Please provide an image URL!\n\n*Usage:* `.dubai <image_url>`");
         }
 
         let imageUrl = text.trim();
-
-        // Auto-add https:// if missing
         if (!imageUrl.startsWith('http://') && !imageUrl.startsWith('https://')) {
             imageUrl = 'https://' + imageUrl;
         }
 
         await reply("🏙️ Applying Dubai filter, please wait...");
 
-        // Call Dubai Filter API with FULL browser headers
         const apiUrl = `https://api-faa.my.id/faa/todubai?url=${encodeURIComponent(imageUrl)}`;
 
-        const apiRes = await axios.get(apiUrl, {
-            timeout: 120000,
-            responseType: 'arraybuffer',
-            maxRedirects: 5,
+        // Use node-fetch instead of axios
+        const response = await fetch(apiUrl, {
+            method: 'GET',
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-                'Accept-Language': 'en-US,en;q=0.9',
-                'Accept-Encoding': 'gzip, deflate, br',
-                'Connection': 'keep-alive',
-                'Upgrade-Insecure-Requests': '1',
-                'Sec-Fetch-Dest': 'document',
-                'Sec-Fetch-Mode': 'navigate',
-                'Sec-Fetch-Site': 'none',
-                'Sec-Fetch-User': '?1',
-                'Cache-Control': 'max-age=0',
-            }
+                'Accept': 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
+            },
+            timeout: 120000,
         });
 
-        // Check if response is actually an image
-        const contentType = apiRes.headers['content-type'] || '';
-        
-        if (!contentType.includes('image')) {
-            try {
-                const jsonData = JSON.parse(apiRes.data.toString());
-                return reply(`❌ API Error: ${jsonData.error || 'Unknown error'}`);
-            } catch {
-                return reply("❌ API did not return an image. Please try again.");
+        if (!response.ok) {
+            if (response.status === 403) {
+                return reply("❌ API access denied (403).");
             }
+            return reply(`❌ API Error: ${response.status}`);
         }
 
-        // Convert arraybuffer to Buffer
-        const dubaiImageBuffer = Buffer.from(apiRes.data);
+        const contentType = response.headers.get('content-type');
+        if (!contentType || !contentType.includes('image')) {
+            return reply("❌ API did not return an image.");
+        }
 
-        // Send Dubai filtered image
+        // Get image buffer
+        const arrayBuffer = await response.arrayBuffer();
+        const dubaiImageBuffer = Buffer.from(arrayBuffer);
+
         await conn.sendMessage(
             from,
             {
                 image: dubaiImageBuffer,
-                caption: "> 🏙️ Dubai Filter Applied Successfully by ERFAN-MD\n\n✨ Background changed to Dubai!"
+                caption: "> 🏙️ Dubai Filter Applied Successfully by ERFAN-MD"
             },
             { quoted: m }
         );
 
     } catch (err) {
-        console.error("DUBAI FILTER ERROR:", err.message);
-        console.error("Full error:", err);
-        
-        if (err.code === 'ECONNABORTED') {
-            return reply("⏱️ Request timed out. Please try again.");
-        }
-        if (err.code === 'ENOTFOUND' || err.code === 'ECONNREFUSED') {
-            return reply("❌ Cannot connect to API. Please check your internet.");
-        }
-        if (err.response) {
-            console.error("Response status:", err.response.status);
-            console.error("Response headers:", err.response.headers);
-            if (err.response.status === 403) {
-                return reply("❌ API access denied (403). Cloudflare blocked the request.");
-            }
-            if (err.response.status === 500) {
-                return reply("❌ API server error (500). The image URL might be invalid.");
-            }
-        }
-        
-        reply("❌ Dubai filter failed. Please check your URL and try again.");
+        console.error("DUBAI FILTER ERROR:", err);
+        reply("❌ Dubai filter failed.");
     }
 });
