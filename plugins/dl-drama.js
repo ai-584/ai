@@ -54,9 +54,9 @@ cmd({
         await conn.sendMessage(from, {
             image: { url: videoInfo.thumbnail },
             caption: `
-╔═════════◇🌙◇═══════╗
- *🎭 DRAMA DOWNLOADER 🎭*
-╚════════◇🌙◇════════╝
+╔═══════════◇🌙◇═════════╗
+     *🎭 DRAMA DOWNLOADER 🎭*
+╚═══════════◇🌙◇═════════╝
 
 📺 *Title:* ${videoInfo.title}
 🕒 *Duration:* ${videoInfo.timestamp}
@@ -67,28 +67,40 @@ cmd({
             `
         }, { quoted: mek });
 
-        // Download via NEW API
+        // Download via API
         const api = `https://jawad-tech.vercel.app/download/ytdl?url=${encodeURIComponent(url)}`;
         const res = await axios.get(api);
         const data = res.data;
 
-        // Updated check according to the new API response format
-        if (!data?.success || !data?.result?.download_url) {
-            return await reply("⚠️ Could not get the drama file, please try again later!");
+        // Smart Check: Look for the new format, then old format, then any available video link
+        let downloadLink = data?.result?.download_url || data?.result?.mp4 || data?.result?.download;
+        
+        // Fallback: If the result is an object with multiple qualities, pick the best one
+        if (!downloadLink && data?.result) {
+            const qualities = ['720', '480', '360'];
+            for (let q of qualities) {
+                if (data.result[q]) {
+                    downloadLink = data.result[q];
+                    break;
+                }
+            }
         }
 
-        const { title, download_url, quality, duration } = data.result;
+        if (!downloadLink) {
+            // Log the exact API response in your console so you can see what it's actually returning
+            console.log("API RESPONSE ERROR:", JSON.stringify(data, null, 2));
+            return await reply("⚠️ Could not get the drama file. The API might be down or the video is restricted.");
+        }
 
-        // Send as a video so it plays directly in the chat
+        const title = data?.result?.title || videoInfo.title;
+
+        // Send as a video
         await conn.sendMessage(from, {
-            video: { url: download_url },
+            video: { url: downloadLink },
             mimetype: 'video/mp4',
             caption: `
 ✨ *${title}*  
 🎬 Your requested drama is ready!
-
-🎞️ *Quality:* ${quality}p
-⏱️ *Duration:* ${duration}
 
 🖤 *Enjoy Watching With*  
 『🔥 DARK ZONE MD 🔥』
