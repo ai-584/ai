@@ -8,33 +8,33 @@ const __dirname = path.dirname(__filename);
 
 cmd({
     pattern: "gemini",
-    alias: ["edit", "geminiedit", "aiedit"],
+    alias: ["edit", "geminiedit", "aiedit", "imgedit"],
     react: "✨",
     desc: "Edit image using Gemini AI with URL",
     category: "image",
-    use: ".gemini <image_url> | <prompt>",
+    use: ".gemini <url>, <prompt>",
     filename: __filename,
 },
 async (conn, mek, m, { from, reply, text }) => {
     try {
         // Must provide text
         if (!text || text.trim().length === 0) {
-            return reply("📝 Please provide image URL and prompt!\n\n*Usage:* `.gemini <image_url> | <prompt>`\n\n*Example:*\n`.gemini https://i.ibb.co/abc.jpg | make it anime style`");
+            return reply("📝 Please provide image URL and prompt!\n\n*Usage:* `.gemini <url>, <prompt>`\n\n*Example:*\n`.gemini https://i.ibb.co/abc.jpg, add a cat`\n`.gemini i.ibb.co/abc.jpg, make it anime`");
         }
 
-        // Split URL and prompt by |
-        const parts = text.split('|').map(p => p.trim());
+        // Split URL and prompt by comma
+        const parts = text.split(',').map(p => p.trim());
         
         if (parts.length < 2) {
-            return reply("❌ Please separate URL and prompt with `|`\n\n*Example:*\n`.gemini https://i.ibb.co/abc.jpg | make it anime style`");
+            return reply("❌ Please separate URL and prompt with a comma `,`\n\n*Example:*\n`.gemini https://i.ibb.co/abc.jpg, add a cat`");
         }
 
-        const imageUrl = parts[0];
-        const prompt = parts[1];
+        let imageUrl = parts[0];
+        const prompt = parts.slice(1).join(', '); // In case prompt also has commas
 
-        // Validate URL
+        // Auto-add https:// if missing
         if (!imageUrl.startsWith('http://') && !imageUrl.startsWith('https://')) {
-            return reply("❌ Please provide a valid image URL starting with http:// or https://");
+            imageUrl = 'https://' + imageUrl;
         }
 
         await reply("⏳ Editing image with Gemini AI, please wait...");
