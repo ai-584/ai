@@ -1,9 +1,9 @@
 // ERFAN-MD
 import { fileURLToPath } from 'url';
 import path from 'path';
+import https from 'https';
 import { cmd } from '../command.js';
 import yts from 'yt-search';
-import axios from 'axios';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -54,8 +54,9 @@ cmd({
         await conn.sendMessage(from, {
             image: { url: videoInfo.thumbnail },
             caption: `
-
- *🎭 DRAMA DOWNLOADER 🎭*
+╔═══════════◇🌙◇═════════╗
+     *🎭 DRAMA DOWNLOADER 🎭*
+╚═══════════◇🌙◇═════════╝
 
 📺 *Title:* ${videoInfo.title}
 🕒 *Duration:* ${videoInfo.timestamp}
@@ -66,18 +67,35 @@ cmd({
             `
         }, { quoted: mek });
 
-        // Download via NEW API
-        const api = `https://api-xemoz-official.my.id/api/donwloader/ytmp4.php?url=${encodeURIComponent(url)}`;
-        const res = await axios.get(api);
-        const data = res.data;
+        // Fetch via NEW API using native https to prevent HTML parsing crash
+        const apiUrl = `https://api-xemoz-official.my.id/api/donwloader/ytmp4.php?url=${encodeURIComponent(url)}`;
+        
+        const data = await new Promise((resolve, reject) => {
+            https.get(apiUrl, (res) => {
+                let chunks = [];
+                res.on('data', (chunk) => chunks.push(chunk));
+                res.on('end', () => {
+                    const fullResponse = Buffer.concat(chunks).toString();
+                    // The API returns an HTML page with JSON inside, so we extract the JSON part
+                    const jsonMatch = fullResponse.match(/\{[\s\S]*\}/);
+                    if (jsonMatch) {
+                        try {
+                            resolve(JSON.parse(jsonMatch[0]));
+                        } catch (e) {
+                            reject(new Error("Failed to parse API data."));
+                        }
+                    } else {
+                        reject(new Error("No JSON data found in API response."));
+                    }
+                });
+            }).on('error', (err) => reject(err));
+        });
 
         // Smart Check tailored for the new API response format
         let downloadLink = data?.result?.download || data?.result?.download_url || data?.result?.mp4;
-        
         let title = data?.result?.title || videoInfo.title;
 
         if (!downloadLink) {
-            // Log the exact API response in your console so you can see what it's actually returning
             console.log("API RESPONSE ERROR:", JSON.stringify(data, null, 2));
             return await reply("⚠️ Could not get the drama file. The API might be down or the video is restricted.");
         }
