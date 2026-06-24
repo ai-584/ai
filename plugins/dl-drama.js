@@ -1,9 +1,9 @@
 // ERFAN-MD
 import { fileURLToPath } from 'url';
 import path from 'path';
-import https from 'https';
 import { cmd } from '../command.js';
 import yts from 'yt-search';
+import axios from 'axios';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -54,9 +54,9 @@ cmd({
         await conn.sendMessage(from, {
             image: { url: videoInfo.thumbnail },
             caption: `
-╔═══════════◇🌙◇═════════╗
+
      *🎭 DRAMA DOWNLOADER 🎭*
-╚═══════════◇🌙◇═════════╝
+
 
 📺 *Title:* ${videoInfo.title}
 🕒 *Duration:* ${videoInfo.timestamp}
@@ -67,33 +67,23 @@ cmd({
             `
         }, { quoted: mek });
 
-        // Fetch via NEW API using native https to prevent HTML parsing crash
-        const apiUrl = `https://api-xemoz-official.my.id/api/donwloader/ytmp4.php?url=${encodeURIComponent(url)}`;
-        
-        const data = await new Promise((resolve, reject) => {
-            https.get(apiUrl, (res) => {
-                let chunks = [];
-                res.on('data', (chunk) => chunks.push(chunk));
-                res.on('end', () => {
-                    const fullResponse = Buffer.concat(chunks).toString();
-                    // The API returns an HTML page with JSON inside, so we extract the JSON part
-                    const jsonMatch = fullResponse.match(/\{[\s\S]*\}/);
-                    if (jsonMatch) {
-                        try {
-                            resolve(JSON.parse(jsonMatch[0]));
-                        } catch (e) {
-                            reject(new Error("Failed to parse API data."));
-                        }
-                    } else {
-                        reject(new Error("No JSON data found in API response."));
-                    }
-                });
-            }).on('error', (err) => reject(err));
-        });
+        // Download via NEW API
+        const api = `https://api.princetechn.com/api/download/ytvideo?apikey=prince&quality=720&url=${encodeURIComponent(url)}`;
+        const res = await axios.get(api);
+        const data = res.data;
 
-        // Smart Check tailored for the new API response format
-        let downloadLink = data?.result?.download || data?.result?.download_url || data?.result?.mp4;
+        let downloadLink = data?.result?.download_url;
         let title = data?.result?.title || videoInfo.title;
+        let quality = data?.result?.quality || "720p";
+
+        // Fallback: If 720p is not available, try 1080p automatically
+        if (!downloadLink && data?.result?.available_qualities?.includes("1080p")) {
+            const api1080 = `https://api.princetechn.com/api/download/ytvideo?apikey=prince&quality=1080&url=${encodeURIComponent(url)}`;
+            const res1080 = await axios.get(api1080);
+            const data1080 = res1080.data;
+            downloadLink = data1080?.result?.download_url;
+            quality = "1080p";
+        }
 
         if (!downloadLink) {
             console.log("API RESPONSE ERROR:", JSON.stringify(data, null, 2));
@@ -106,6 +96,8 @@ cmd({
             mimetype: 'video/mp4',
             caption: `
 ✨ *${title}*  
+🎞️ *Quality:* ${quality}
+
 🎬 Your requested drama is ready!
 
 🖤 *Enjoy Watching With*  
