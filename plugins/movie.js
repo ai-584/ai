@@ -10,7 +10,7 @@ const __dirname = path.dirname(__filename);
 
 cmd({
     pattern: "gemini",
-    alias: ["editt", "geminiedit", "aiedit"],
+    alias: ["edit", "geminiedit", "aiedit"],
     react: "✨",
     desc: "Edit image using Gemini AI",
     category: "image",
@@ -26,7 +26,7 @@ async (conn, mek, m, { from, quoted, reply, text }) => {
 
         // Must provide prompt
         if (!text || text.trim().length === 0) {
-            return reply("📝 Please provide a prompt!\n\n*Usage:* Reply to an image with `.gemini <your edit prompt>`\n*Example:* `.gemini change background to sunset`");
+            return reply("📝 Please provide a prompt!\n\n*Usage:* Reply to an image with `.gemini <your edit prompt>`\n*Example:* `.gemini make it anime style`");
         }
 
         await reply("⏳ Editing image with Gemini AI, please wait...");
@@ -55,6 +55,11 @@ async (conn, mek, m, { from, quoted, reply, text }) => {
             { headers: form.getHeaders() }
         );
 
+        // Check upload response
+        if (!uploadRes.data || !uploadRes.data.data || !uploadRes.data.data.url) {
+            return reply("❌ Failed to upload image. Please try again.");
+        }
+
         const imageUrl = uploadRes.data.data.url.replace(
             'tmpfiles.org/',
             'tmpfiles.org/dl/'
@@ -65,21 +70,33 @@ async (conn, mek, m, { from, quoted, reply, text }) => {
 
         const apiRes = await axios.get(apiUrl, {
             timeout: 120000,
-            responseType: 'arraybuffer' // Get image as buffer directly
+            responseType: 'arraybuffer', // IMPORTANT: Get image as buffer
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+                'Accept': 'image/*,*/*'
+            }
         });
 
-        // Send edited image
+        // Convert arraybuffer to Buffer
+        const editedImageBuffer = Buffer.from(apiRes.data);
+
+        // Send edited image directly
         await conn.sendMessage(
             from,
             {
-                image: Buffer.from(apiRes.data),
+                image: editedImageBuffer,
                 caption: `> ✨ Image Edited Successfully by ERFAN-MD\n\n📝 *Prompt:* ${text.trim()}`
             },
             { quoted: m }
         );
 
     } catch (err) {
-        console.error("GEMINI EDIT ERROR:", err);
+        console.error("GEMINI EDIT ERROR:", err.message);
+        console.error("Full error:", err);
+        if (err.response) {
+            console.error("Response status:", err.response.status);
+            console.error("Response data:", err.response.data);
+        }
         reply("❌ Image editing failed. Please try again with a different prompt or image.");
     }
 });
