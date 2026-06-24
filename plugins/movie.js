@@ -12,7 +12,7 @@ const __filename = fileURLToPath(import.meta.url);
 // ═══════════════════════════════════════════════════════════
 cmd({
     pattern: "ytv",
-    alias: ["ytmp4", "video"],
+    alias: ["ytmp4", "video2"],
     desc: "Download YouTube video (MP4)",
     category: "download",
     react: "📹",
