@@ -54,9 +54,9 @@ cmd({
         await conn.sendMessage(from, {
             image: { url: videoInfo.thumbnail },
             caption: `
-
+╔═══════════◇🌙◇═════════╗
      *🎭 DRAMA DOWNLOADER 🎭*
-
+╚═══════════◇🌙◇═════════╝
 
 📺 *Title:* ${videoInfo.title}
 🕒 *Duration:* ${videoInfo.timestamp}
@@ -67,28 +67,32 @@ cmd({
             `
         }, { quoted: mek });
 
-        // Download via NEW API
-        const api = `https://api.princetechn.com/api/download/ytvideo?apikey=prince&quality=720&url=${encodeURIComponent(url)}`;
+        // Download via API
+        const api = `https://jawad-tech.vercel.app/download/ytdl?url=${encodeURIComponent(url)}`;
         const res = await axios.get(api);
         const data = res.data;
 
-        let downloadLink = data?.result?.download_url;
-        let title = data?.result?.title || videoInfo.title;
-        let quality = data?.result?.quality || "720p";
-
-        // Fallback: If 720p is not available, try 1080p automatically
-        if (!downloadLink && data?.result?.available_qualities?.includes("1080p")) {
-            const api1080 = `https://api.princetechn.com/api/download/ytvideo?apikey=prince&quality=1080&url=${encodeURIComponent(url)}`;
-            const res1080 = await axios.get(api1080);
-            const data1080 = res1080.data;
-            downloadLink = data1080?.result?.download_url;
-            quality = "1080p";
+        // Smart Check: Look for the new format, then old format, then any available video link
+        let downloadLink = data?.result?.download_url || data?.result?.mp4 || data?.result?.download;
+        
+        // Fallback: If the result is an object with multiple qualities, pick the best one
+        if (!downloadLink && data?.result) {
+            const qualities = ['720', '480', '360'];
+            for (let q of qualities) {
+                if (data.result[q]) {
+                    downloadLink = data.result[q];
+                    break;
+                }
+            }
         }
 
         if (!downloadLink) {
+            // Log the exact API response in your console so you can see what it's actually returning
             console.log("API RESPONSE ERROR:", JSON.stringify(data, null, 2));
             return await reply("⚠️ Could not get the drama file. The API might be down or the video is restricted.");
         }
+
+        const title = data?.result?.title || videoInfo.title;
 
         // Send as a video
         await conn.sendMessage(from, {
@@ -96,8 +100,6 @@ cmd({
             mimetype: 'video/mp4',
             caption: `
 ✨ *${title}*  
-🎞️ *Quality:* ${quality}
-
 🎬 Your requested drama is ready!
 
 🖤 *Enjoy Watching With*  
