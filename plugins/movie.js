@@ -88,7 +88,7 @@ function drawAvatar(ctx, img, name, cx, cy, r, gradColors) {
 }
 
 // ═══════════════════════════════════════════════════════════
-// CANVAS GENERATOR
+// CANVAS GENERATOR (UNCHANGED)
 // ═══════════════════════════════════════════════════════════
 
 async function generateStatsGcCanvas({ groupName, members, totalMsg, activeUsers, topYappers, activityData, botName, timestamp }) {
@@ -310,17 +310,17 @@ async function generateStatsGcCanvas({ groupName, members, totalMsg, activeUsers
 }
 
 // ═══════════════════════════════════════════════════════════
-// 🎬 STATSGC COMMAND (ERFAN-MD STRUCTURE)
+// 🎬 STATSGC COMMAND (EXACT ERFAN-MD STRUCTURE)
 // ═══════════════════════════════════════════════════════════
 
 cmd({
     pattern: "statsgc",
-    alias: ["gcanalytics", "groupstats", "ggg"],
+    alias: ["gcanalytics", "groupstats", "gstats"],
     desc: "Show group analytics with beautiful canvas",
     category: "group",
     react: "📊",
     filename: __filename
-}, async (conn, mek, m, { from, reply, isGroup }) => {
+}, async (conn, mek, m, { from, quoted, reply, isGroup }) => {
     try {
         // Check if group
         if (!isGroup) {
