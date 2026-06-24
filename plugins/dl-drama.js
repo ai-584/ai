@@ -4,6 +4,7 @@ import path from 'path';
 import { cmd } from '../command.js';
 import yts from 'yt-search';
 import axios from 'axios';
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -53,9 +54,9 @@ cmd({
         await conn.sendMessage(from, {
             image: { url: videoInfo.thumbnail },
             caption: `
-╔═══════════◇🌙◇═════════╗
-     *🎭 DRAMA DOWNLOADER 🎭*
-╚═══════════◇🌙◇═════════╝
+╔═════════◇🌙◇═══════╗
+ *🎭 DRAMA DOWNLOADER 🎭*
+╚════════◇🌙◇════════╝
 
 📺 *Title:* ${videoInfo.title}
 🕒 *Duration:* ${videoInfo.timestamp}
@@ -66,24 +67,28 @@ cmd({
             `
         }, { quoted: mek });
 
-        // Download via existing API
+        // Download via NEW API
         const api = `https://jawad-tech.vercel.app/download/ytdl?url=${encodeURIComponent(url)}`;
         const res = await axios.get(api);
         const data = res.data;
 
-        if (!data?.status || !data?.result?.mp4)
+        // Updated check according to the new API response format
+        if (!data?.success || !data?.result?.download_url) {
             return await reply("⚠️ Could not get the drama file, please try again later!");
+        }
 
-        const { title, mp4 } = data.result;
+        const { title, download_url, quality, duration } = data.result;
 
-        // Send as a document for faster speed
+        // Send as a video so it plays directly in the chat
         await conn.sendMessage(from, {
-            document: { url: mp4 },
+            video: { url: download_url },
             mimetype: 'video/mp4',
-            fileName: `${title}.mp4`,
             caption: `
 ✨ *${title}*  
 🎬 Your requested drama is ready!
+
+🎞️ *Quality:* ${quality}p
+⏱️ *Duration:* ${duration}
 
 🖤 *Enjoy Watching With*  
 『🔥 DARK ZONE MD 🔥』
