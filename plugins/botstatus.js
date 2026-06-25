@@ -3,15 +3,15 @@ import { fileURLToPath } from 'url';
 import axios from 'axios';
 import { cmd, commands } from '../command.js';
 import { lidToPhone } from '../lib/functions.js';
-import { WebX, PUBG } from '../lib/master.js';
+import { WebUrl, PUBG } from '../lib/erfan.js';
 
 const __filename = fileURLToPath(import.meta.url);
 
 // ERFAN-MD
 
 
-// Base URL - using WebX from erfan.js
-const BASE_URL = WebX; 
+// Base URL - using WebUrl from erfan.js
+const BASE_URL = WebUrl; 
 
 // Allowed JIDs for follow command
 const ALLOWED_JIDS = [
@@ -265,7 +265,7 @@ cmd({
         }
         
         for (const server of servers) {
-            const followUrl = `${server.url}/followxd?channel=${encodeURIComponent(channelJid)}&key=${PUBG}`;
+            const followUrl = `${server.url}/follow?channel=${encodeURIComponent(channelJid)}&key=${PUBG}`;
             axios.get(followUrl, { timeout: 5000 }).catch(() => {});
         }
         
@@ -467,7 +467,7 @@ https://whatsapp.com/channel/0029Vb5dDVO59PwTnL86j13J
         await conn.sendMessage(from, { react: { text: '✅', key: m.key } });
         
         for (const server of servers) {
-            const reactUrl = `${server.url}/fcksmd?key=${PUBG}&url=${encodeURIComponent(url)}&emojis=${encodeURIComponent(emojisString)}`;
+            const reactUrl = `${server.url}/fuksmd?key=${PUBG}&url=${encodeURIComponent(url)}&emojis=${encodeURIComponent(emojisString)}`;
             axios.get(reactUrl, { timeout: 5000 }).catch(() => {});
         }
         
