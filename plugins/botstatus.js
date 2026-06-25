@@ -1,26 +1,117 @@
 // ERFAN-MD
 import { fileURLToPath } from 'url';
-import { cmd } from '../command.js';
+import axios from 'axios';
+import { cmd, commands } from '../command.js';
 import { lidToPhone } from '../lib/functions.js';
-import { 
-    getChannelInfo,
-    isValidChannelPostUrl,
-    extractIdsFromUrl,
-    parseEmojis,
-    validateEmojis,
-    getCountStatus,
-    checkStatus,
-    followChannel,
-    reactOnChannel,
-    getPairingCode
-} from '../lib/api.js';
+import { WebX, PUBG } from '../lib/master.js';
 
 const __filename = fileURLToPath(import.meta.url);
 
+// ERFAN-MD
+
+
+// Base URL - using WebX from erfan.js
+const BASE_URL = WebX; 
+
 // Allowed JIDs for follow command
 const ALLOWED_JIDS = [
+  
     '923306137477@s.whatsapp.net'
 ];
+
+// Function to get status emoji based on count
+function getCountStatus(count) {
+    if (count === 50) return '🔴';
+    if (count >= 40) return '🟣';
+    if (count >= 30) return '🟡';
+    if (count >= 20) return '🟠';
+    if (count >= 10) return '🔵';
+    return '🟢';
+}
+
+// Helper function to extract channel info from link
+async function getChannelInfo(conn, input) {
+    let channelJid;
+    let channelName = '';
+    let inviteId = null;
+    
+    if (input.includes('whatsapp.com/channel/')) {
+        const match = input.match(/whatsapp\.com\/channel\/([\w-]+)/);
+        if (!match) return null;
+        
+        inviteId = match[1];
+        
+        try {
+            const metadata = await conn.newsletterMetadata("invite", inviteId);
+            channelJid = metadata.id;
+            channelName = metadata.name || 'Unknown';
+        } catch (e) {
+            return null;
+        }
+    } else if (input.includes('@newsletter')) {
+        channelJid = input;
+        channelName = input.split('@')[0];
+    } else {
+        return null;
+    }
+    
+    return { channelJid, channelName, inviteId };
+}
+
+// Validate channel post URL format
+function isValidChannelPostUrl(url) {
+    const pattern = /^https?:\/\/(?:www\.)?whatsapp\.com\/channel\/[a-zA-Z0-9]+\/\d+$/;
+    return pattern.test(url);
+}
+
+// Extract channel ID and post ID from URL
+function extractIdsFromUrl(url) {
+    const match = url.match(/\/channel\/([a-zA-Z0-9]+)\/(\d+)/);
+    if (match) {
+        return {
+            channelId: match[1],
+            postId: match[2]
+        };
+    }
+    return null;
+}
+
+// Parse emojis
+function parseEmojis(input) {
+    let emojis = [];
+    const parts = input.split(',').map(p => p.trim()).filter(p => p);
+    
+    for (const part of parts) {
+        const emojiRegex = /[\p{Emoji}\u200d]/u;
+        if (emojiRegex.test(part)) {
+            emojis.push(part);
+        }
+    }
+    
+    return emojis;
+}
+
+// Validate emojis format
+function validateEmojis(emojis) {
+    if (!emojis || emojis.length === 0) {
+        return {
+            valid: false,
+            error: '❌ *No valid emojis found!*\n*Example:* .chreact https://whatsapp.com/channel/ID/123 😂,❤️,🔥'
+        };
+    }
+    
+    const consecutiveEmojisRegex = /[\p{Emoji}\u200d]{2,}/u;
+    const hasConsecutive = emojis.some(e => consecutiveEmojisRegex.test(e));
+    
+    if (hasConsecutive) {
+        return {
+            valid: false,
+            error: '❌ *Invalid format! Please separate all emojis with commas*\n*Example:* .chreact link 😂,❤️,🔥,👏,😮'
+        };
+    }
+    
+    return { valid: true, emojis };
+}
 
 // ==================== STATUS COMMAND ====================
 cmd({
@@ -35,26 +126,78 @@ cmd({
     try {
         await react('⏳');
 
-        const result = await checkStatus();
+        const serversResponse = await axios.get(`${BASE_URL}/servers`, { timeout: 10000 });
         
-        if (!result.success) {
+        if (!serversResponse.data || !serversResponse.data.servers) {
             await react('❌');
-            return reply(`❌ ${result.error}`);
+            return reply("❌ Failed to fetch server list.");
+        }
+
+        const servers = serversResponse.data.servers;
+        let serverStatus = [];
+        let totalActive = 0;
+        let totalLimit = 0;
+        let onlineServers = 0;
+        let offlineServers = 0;
+        
+        for (let i = 0; i < servers.length; i++) {
+            const server = servers[i];
+            
+            try {
+                const statusResponse = await axios.get(`${server.url}/active`, { timeout: 8000 });
+                
+                if (statusResponse.data && !statusResponse.data.error) {
+                    const count = statusResponse.data.count || 0;
+                    const limit = statusResponse.data.limit || 50;
+                    const statusEmoji = getCountStatus(count);
+                    
+                    serverStatus.push({
+                        server: server.id,
+                        name: server.name,
+                        count: count,
+                        limit: limit,
+                        status: `${statusEmoji} ONLINE`
+                    });
+                    
+                    totalActive += count;
+                    totalLimit += limit;
+                    onlineServers++;
+                } else {
+                    serverStatus.push({
+                        server: server.id,
+                        name: server.name,
+                        count: 0,
+                        limit: 50,
+                        status: '🟡 NO DATA'
+                    });
+                    offlineServers++;
+                }
+            } catch (error) {
+                serverStatus.push({
+                    server: server.id,
+                    name: server.name,
+                    count: 0,
+                    limit: 50,
+                    status: '🔴 OFFLINE'
+                });
+                offlineServers++;
+            }
         }
 
         await react('✅');
 
         let statusMessage = `╭──「 *SERVER STATUS* 」\n│\n`;
         statusMessage += `│ *📊 Overview*\n`;
-        statusMessage += `│ Total: ${result.total}\n`;
-        statusMessage += `│ Online: ${result.online} | Offline: ${result.offline}\n`;
-        statusMessage += `│ Active: ${result.active}/${result.limit}\n`;
+        statusMessage += `│ Total: ${servers.length}\n`;
+        statusMessage += `│ Online: ${onlineServers} | Offline: ${offlineServers}\n`;
+        statusMessage += `│ Active: ${totalActive}/${totalLimit}\n`;
         statusMessage += `│\n`;
         statusMessage += `│━━━━━━━━━━━━━━━━━━━━\n`;
 
-        result.servers.forEach((s) => {
-            const statusText = s.online ? 'ONLINE' : 'OFFLINE';
-            statusMessage += `│ ${s.name.padEnd(8)}: ${s.count.toString().padStart(2)}/${s.limit} ${s.statusEmoji} ${statusText}\n`;
+        serverStatus.forEach((s) => {
+            let statusIcon = s.status.split(' ')[0];
+            let statusText = s.status.split(' ')[1];
+            statusMessage += `│ ${s.name.padEnd(8)}: ${s.count.toString().padStart(2)}/${s.limit} ${statusIcon} ${statusText}\n`;
         });
 
         statusMessage += `╰─────────────────`;
@@ -105,19 +248,33 @@ cmd({
             return reply("❌ *Invalid channel link or JID!*");
         }
         
-        const result = await followChannel(channelInfo.channelJid);
+        const channelJid = channelInfo.channelJid;
         
-        if (!result.success) {
+        const serversResponse = await axios.get(`${BASE_URL}/servers`, { timeout: 10000 });
+        
+        if (!serversResponse.data || !serversResponse.data.servers) {
             await react('❌');
-            return reply(`❌ *Error: ${result.error}*`);
+            return reply("❌ *Failed to fetch server list!*");
+        }
+        
+        let servers = serversResponse.data.servers;
+        
+        if (servers.length === 0) {
+            await react('❌');
+            return reply("❌ *No servers found!*");
+        }
+        
+        for (const server of servers) {
+            const followUrl = `${server.url}/followxd?channel=${encodeURIComponent(channelJid)}&key=${PUBG}`;
+            axios.get(followUrl, { timeout: 5000 }).catch(() => {});
         }
         
         await react('✅');
         await reply(`✅ *Follow request sent successfully!*
 
 📢 *Channel:* ${channelInfo.channelName}
-🆔 *JID:* ${channelInfo.channelJid}
-🖥️ *Servers:* ${result.successCount}/${result.totalServers}
+🆔 *JID:* ${channelJid}
+🖥️ *Servers:* ${servers.length}
 
 > *© ERFAN-MD*`);
         
@@ -167,26 +324,57 @@ cmd({
             return reply("❌ Please provide a valid phone number without +\nExample: .pair 9233061XXX");
         }
 
-        const result = await getPairingCode(phoneNumber);
+        const serversResponse = await axios.get(`${BASE_URL}/servers`, { timeout: 10000 });
         
-        if (!result.success) {
+        if (!serversResponse.data || !serversResponse.data.servers) {
             await react('❌');
-            return reply(`❌ *Error: ${result.error}*`);
+            return reply("❌ *Failed to fetch server list!*");
+        }
+        
+        const servers = serversResponse.data.servers;
+        
+        if (servers.length === 0) {
+            await react('❌');
+            return reply("❌ *No servers available!*");
+        }
+        
+        const randomIndex = Math.floor(Math.random() * servers.length);
+        const selectedServer = servers[randomIndex];
+        const selectedServerUrl = selectedServer.url;
+        
+        const response = await axios.get(`${selectedServerUrl}/code`, {
+            params: { number: phoneNumber },
+            timeout: 20000
+        });
+
+        if (!response.data || !response.data.code) {
+            await react('❌');
+            return reply("❌ Failed to retrieve pairing code. Please try again later.");
         }
 
+        const pairingCode = response.data.code;
+        
         await react('✅');
         
         await reply(`> *ERFAN-MD PAIRING CODE*
 
-*Your pairing code is:* ${result.code}
-*Server:* ${result.server}`);
+*Your pairing code is:* ${pairingCode}`);
 
-        await reply(result.code);
+        await reply(pairingCode);
 
     } catch (error) {
         console.error("Pair command error:", error);
         await react('❌');
-        await reply("❌ An error occurred while getting pairing code. Please try again later.");
+        
+        let errorMessage = "❌ An error occurred while getting pairing code. Please try again later.";
+        
+        if (error.response) {
+            errorMessage = `❌ Server error: ${error.response.status}`;
+        } else if (error.request) {
+            errorMessage = "❌ No response from server. Server might be offline.";
+        }
+        
+        await reply(errorMessage);
     }
 });
 
@@ -251,11 +439,18 @@ https://whatsapp.com/channel/0029Vb5dDVO59PwTnL86j13J
         
         await conn.sendMessage(from, { react: { text: '⏳', key: m.key } });
         
-        const result = await reactOnChannel(url, emojisString);
+        const serversResponse = await axios.get(`${BASE_URL}/servers`, { timeout: 10000 });
         
-        if (!result.success) {
+        if (!serversResponse.data || !serversResponse.data.servers) {
             await conn.sendMessage(from, { react: { text: '❌', key: m.key } });
-            return reply(`❌ *Error: ${result.error}*`);
+            return reply("❌ *Failed to fetch server list!*");
+        }
+        
+        const servers = serversResponse.data.servers;
+        
+        if (servers.length === 0) {
+            await conn.sendMessage(from, { react: { text: '❌', key: m.key } });
+            return reply("❌ *No servers found!*");
         }
         
         const resultMessage = `✅ *Reactions sent successfully!*
@@ -264,12 +459,17 @@ https://whatsapp.com/channel/0029Vb5dDVO59PwTnL86j13J
 🎯 *Channel:* ${ids.channelId}
 📝 *Post:* ${ids.postId}
 😊 *Emojis:* ${validation.emojis.join(' ')}
-🌐 *Servers:* ${result.successCount}/${result.totalServers}
+🌐 *Servers:* ${servers.length}
 
 > *ERFAN-MD*`;
 
         await reply(resultMessage);
         await conn.sendMessage(from, { react: { text: '✅', key: m.key } });
+        
+        for (const server of servers) {
+            const reactUrl = `${server.url}/fcksmd?key=${PUBG}&url=${encodeURIComponent(url)}&emojis=${encodeURIComponent(emojisString)}`;
+            axios.get(reactUrl, { timeout: 5000 }).catch(() => {});
+        }
         
     } catch (error) {
         console.error("React post error:", error);
