@@ -1,4 +1,4 @@
-// ERFAN-MD - TikTok Search Command
+// ERFAN-MD - TikTok Search Command (FIXED)
 import { fileURLToPath } from 'url';
 import path from 'path';
 import axios from 'axios';
@@ -9,8 +9,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 cmd({
-    pattern: "ttrendom",
-    alias: ["tiktokrendom", "tikrendom", "ttr"],
+    pattern: "tiktoksearch",
+    alias: ["ttsearch", "tiksearch", "ttr"],
     desc: "Search TikTok videos by keyword",
     category: "download",
     react: "🔍",
@@ -21,10 +21,9 @@ cmd({
 
         await conn.sendMessage(from, { react: { text: '⏳', key: m.key } });
 
-        // Build API URL with encoded query
+        // Step 1: Fetch search results from API
         const apiUrl = `https://apis.prexzyvilla.site/search/tiktoksearch?q=${encodeURIComponent(q)}`;
         
-        // Fetch data from API
         const res = await axios.get(apiUrl, {
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
@@ -34,15 +33,13 @@ cmd({
 
         const json = res.data;
 
-        // Validate response
         if (!json?.status || !json?.data || !Array.isArray(json.data) || json.data.length === 0) {
             return await reply("❌ No videos found for your search! Try a different keyword.");
         }
 
-        // Pick a random video from results (or use first one)
+        // Pick a random video from results
         const video = json.data[Math.floor(Math.random() * json.data.length)];
         
-        // Extract video info
         const videoUrl = video.play || video.wmplay;
         const title = video.title || "No Title";
         const author = video.author?.nickname || video.author?.unique_id || "Unknown";
@@ -53,9 +50,31 @@ cmd({
         const shares = video.share_count || 0;
         const comments = video.comment_count || 0;
         const region = video.region || "Unknown";
+        const cover = video.cover || "";
 
         if (!videoUrl) {
             return await reply("❌ Video URL not found in response!");
+        }
+
+        // Step 2: Download video with proper headers (tikwm blocks without referer)
+        await reply("⬇️ Downloading video, please wait...");
+
+        const videoRes = await axios.get(videoUrl, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Referer': 'https://tikwm.com/',
+                'Accept': '*/*'
+            },
+            responseType: 'arraybuffer',
+            timeout: 60000,
+            maxContentLength: 50 * 1024 * 1024 // 50MB max
+        });
+
+        const videoBuffer = Buffer.from(videoRes.data);
+
+        // Validate downloaded video
+        if (videoBuffer.length < 1000) {
+            return await reply("❌ Downloaded file is too small or invalid!");
         }
 
         // Get BOT_NAME
@@ -79,9 +98,9 @@ cmd({
 > *Powered by ${BOT_NAME} ✅*
         `.trim();
 
-        // Send video
+        // Step 3: Send video as buffer
         await conn.sendMessage(from, {
-            video: { url: videoUrl },
+            video: videoBuffer,
             mimetype: 'video/mp4',
             caption: caption
         }, { quoted: mek });
@@ -89,8 +108,12 @@ cmd({
         await conn.sendMessage(from, { react: { text: '✅', key: m.key } });
 
     } catch (e) {
-        console.error("Error in .tiktoksearch:", e);
-        await reply("❌ Error occurred while searching TikTok videos!");
+        console.error("Error in .tiktoksearch:", e.message);
+        if (e.response) {
+            console.error("Response status:", e.response.status);
+            console.error("Response data:", e.response.data?.toString()?.substring(0, 200));
+        }
+        await reply("❌ Error occurred while searching/downloading TikTok video!");
         await conn.sendMessage(from, { react: { text: '❌', key: m.key } });
     }
 });
