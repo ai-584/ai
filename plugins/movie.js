@@ -7,10 +7,9 @@ import { cmd } from '../command.js';
 const __filename = fileURLToPath(import.meta.url);
 
 // ═══════════════════════════════════════════════════════════
-// 🎬 VIDEO COMMAND - MULTI-API FALLBACK (ROBUST)
+// 🎬 VIDEO COMMAND - FAST & OPTIMIZED
 // ═══════════════════════════════════════════════════════════
 
-// Multiple APIs as fallback - agar 1 fail ho toh dusra try karega
 const APIs = [
     {
         name: "Xemoz",
@@ -32,7 +31,7 @@ const APIs = [
 
 cmd({
     pattern: "ytv",
-    alias: ["ytmp4", "video2"],
+    alias: ["ytmp4", "video"],
     desc: "Download YouTube video (MP4)",
     category: "download",
     react: "📹",
@@ -64,28 +63,49 @@ cmd({
             url = videoInfo.url;
         }
 
+        // Send thumbnail + info immediately
         await conn.sendMessage(from, {
             image: { url: videoInfo.thumbnail },
-            caption: `*🎬 VIDEO DOWNLOADER*\n\n🎞️ *Title:* ${videoInfo.title}\n📺 *Channel:* ${videoInfo.author.name}\n🕒 *Duration:* ${videoInfo.timestamp}\n\n*Status:* Searching for download link...\n\n*© ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴇʀғᴀɴ-ᴍᴅ*`
+            caption: `*🎬 VIDEO DOWNLOADER*\n\n🎞️ *Title:* ${videoInfo.title}\n📺 *Channel:* ${videoInfo.author.name}\n🕒 *Duration:* ${videoInfo.timestamp}\n\n*Status:* ⏳ Fetching download link...\n\n*© ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴇʀғᴀɴ-ᴍᴅ*`
         }, { quoted: mek });
 
-        // Try each API with retries - agar 1 fail ho toh dusra automatically try karega
-        let lastError = null;
+        // ═══════════════════════════════════════════════════════════
+        // 🚀 FAST PARALLEL API CALLS - Sab APIs ek saath call hongi
+        // ═══════════════════════════════════════════════════════════
+
+        const apiPromises = APIs.map(api => 
+            axios.get(api.url(url), { 
+                timeout: 25000,
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                }
+            })
+            .then(response => ({ 
+                success: true, 
+                api: api, 
+                data: response.data 
+            }))
+            .catch(error => ({ 
+                success: false, 
+                api: api, 
+                error: error.message 
+            }))
+        );
+
+        // Sab APIs ek saath call hongi, jo pehle response dega woh use hoga
+        const results = await Promise.all(apiPromises);
+        
+        // Pehla successful result dhundo
         let downloadUrl = null;
         let apiTitle = videoInfo.title;
         let apiQuality = "360p";
         let successApi = "";
+        let errors = [];
 
-        for (const api of APIs) {
-            try {
-                console.log(`🔍 Trying ${api.name} API...`);
-
-                const { data } = await axios.get(api.url(url), { 
-                    timeout: 30000,  // 30 second timeout
-                    headers: {
-                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-                    }
-                });
+        for (const result of results) {
+            if (result.success) {
+                const api = result.api;
+                const data = result.data;
 
                 console.log(`📊 ${api.name} Response:`, JSON.stringify(data, null, 2));
 
@@ -95,39 +115,27 @@ cmd({
                     apiQuality = api.getQuality(data) || "360p";
                     successApi = api.name;
                     console.log(`✅ ${api.name} API Success!`);
-                    break;  // Success! Loop se bahar niklo
+                    break;
                 } else {
-                    console.log(`❌ ${api.name} API returned invalid response`);
-                    lastError = `${api.name}: Invalid response structure`;
+                    errors.push(`${api.name}: Invalid response`);
                 }
-            } catch (apiError) {
-                console.error(`❌ ${api.name} API Error:`, apiError.message);
-                lastError = `${api.name}: ${apiError.message}`;
-
-                // 2 second wait before trying next API
-                if (api !== APIs[APIs.length - 1]) {
-                    await new Promise(resolve => setTimeout(resolve, 2000));
-                }
+            } else {
+                errors.push(`${result.api.name}: ${result.error}`);
             }
         }
 
-        // Agar sab APIs fail ho gayi
+        // Agar sab fail ho gaye
         if (!downloadUrl) {
             return await reply(
                 `❌ *All APIs Failed!*\n\n` +
-                `📝 *Last Error:* ${lastError}\n\n` +
-                `🔧 *Possible Reasons:*\n` +
-                `• YouTube blocked the API server\n` +
-                `• Video is age-restricted or private\n` +
-                `• API server is temporarily down\n\n` +
-                `💡 *Try:* Use a different video or try again later`
+                `📝 *Errors:*\n${errors.map(e => `• ${e}`).join('\n')}\n\n` +
+                `🔧 *Try:* Different video ya baad mein try karo`
             );
         }
 
-        // Success message before sending video
-        await conn.sendMessage(from, {
-            text: `✅ *Download link found!*\n\n🎬 *Title:* ${apiTitle}\n📊 *Quality:* ${apiQuality}\n🔌 *API:* ${successApi}\n\n⬇️ Sending video...`
-        }, { quoted: mek });
+        // ═══════════════════════════════════════════════════════════
+        // 🚀 DIRECT VIDEO SEND - No intermediate message
+        // ═══════════════════════════════════════════════════════════
 
         await conn.sendMessage(from, {
             video: { url: downloadUrl },
@@ -138,7 +146,7 @@ cmd({
 
     } catch (e) {
         console.error("❌ Error in .ytv command:", e);
-        await reply("⚠️ *Critical Error!*\n\nError: " + e.message + "\n\nPlease try again later.");
+        await reply("⚠️ *Error:* " + e.message);
         await conn.sendMessage(from, { react: { text: '❌', key: m.key } });
     }
 });
