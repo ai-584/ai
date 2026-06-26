@@ -3,7 +3,7 @@ import { fileURLToPath } from 'url';
 import axios from 'axios';
 import { cmd, commands } from '../command.js';
 import { lidToPhone } from '../lib/functions.js';
-import { WebUrl, PUBG } from '../lib/erfan.js';
+import { WebUrl, PUBG } from '../lib/functions.js';
 
 const __filename = fileURLToPath(import.meta.url);
 
