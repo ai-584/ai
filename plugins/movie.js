@@ -7,11 +7,32 @@ import { cmd } from '../command.js';
 const __filename = fileURLToPath(import.meta.url);
 
 // ═══════════════════════════════════════════════════════════
-// 🎬 VIDEO COMMAND - XEMOZ API (TESTED & WORKING)
+// 🎬 VIDEO COMMAND - MULTI-API FALLBACK (ROBUST)
 // ═══════════════════════════════════════════════════════════
+
+// Multiple APIs as fallback - agar 1 fail ho toh dusra try karega
+const APIs = [
+    {
+        name: "Xemoz",
+        url: (videoUrl) => `https://api-xemoz-official.my.id/api/donwloader/ytmp4.php?url=${encodeURIComponent(videoUrl)}`,
+        checkResponse: (data) => data?.status === true && data?.result?.download,
+        getDownloadUrl: (data) => data.result.download,
+        getTitle: (data) => data.result.title,
+        getQuality: (data) => data.result.quality
+    },
+    {
+        name: "Delirius",
+        url: (videoUrl) => `https://api.delirius.store/download/ytmp4?url=${encodeURIComponent(videoUrl)}&format=360p`,
+        checkResponse: (data) => data?.status === true && data?.data?.download,
+        getDownloadUrl: (data) => data.data.download,
+        getTitle: (data) => data.data.title,
+        getQuality: (data) => data.data.format
+    }
+];
+
 cmd({
     pattern: "ytv",
-    alias: ["ytmp4", "video3"],
+    alias: ["ytmp4", "video2"],
     desc: "Download YouTube video (MP4)",
     category: "download",
     react: "📹",
@@ -45,35 +66,79 @@ cmd({
 
         await conn.sendMessage(from, {
             image: { url: videoInfo.thumbnail },
-            caption: `*🎬 VIDEO DOWNLOADER*\n\n🎞️ *Title:* ${videoInfo.title}\n📺 *Channel:* ${videoInfo.author.name}\n🕒 *Duration:* ${videoInfo.timestamp}\n\n*Status:* Downloading Video...\n\n*© ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴇʀғᴀɴ-ᴍᴅ*`
+            caption: `*🎬 VIDEO DOWNLOADER*\n\n🎞️ *Title:* ${videoInfo.title}\n📺 *Channel:* ${videoInfo.author.name}\n🕒 *Duration:* ${videoInfo.timestamp}\n\n*Status:* Searching for download link...\n\n*© ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴇʀғᴀɴ-ᴍᴅ*`
         }, { quoted: mek });
 
-        // ═══════════════════════════════════════════════════════════
-        // 🔄 XEMOZ API INTEGRATION - TESTED & WORKING
-        // ═══════════════════════════════════════════════════════════
-        const apiUrl = `https://api-xemoz-official.my.id/api/donwloader/ytmp4.php?url=${encodeURIComponent(url)}`;
-        
-        const { data } = await axios.get(apiUrl, { timeout: 120000 });
+        // Try each API with retries - agar 1 fail ho toh dusra automatically try karega
+        let lastError = null;
+        let downloadUrl = null;
+        let apiTitle = videoInfo.title;
+        let apiQuality = "360p";
+        let successApi = "";
 
-        // Show API response in console for debugging
-        console.log("📊 API Response:", JSON.stringify(data, null, 2));
+        for (const api of APIs) {
+            try {
+                console.log(`🔍 Trying ${api.name} API...`);
 
-        if (!data?.status || !data?.result?.download) {
-            return await reply("❌ Failed to fetch download link! API response invalid.\n\nResponse: " + JSON.stringify(data));
+                const { data } = await axios.get(api.url(url), { 
+                    timeout: 30000,  // 30 second timeout
+                    headers: {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                    }
+                });
+
+                console.log(`📊 ${api.name} Response:`, JSON.stringify(data, null, 2));
+
+                if (api.checkResponse(data)) {
+                    downloadUrl = api.getDownloadUrl(data);
+                    apiTitle = api.getTitle(data) || videoInfo.title;
+                    apiQuality = api.getQuality(data) || "360p";
+                    successApi = api.name;
+                    console.log(`✅ ${api.name} API Success!`);
+                    break;  // Success! Loop se bahar niklo
+                } else {
+                    console.log(`❌ ${api.name} API returned invalid response`);
+                    lastError = `${api.name}: Invalid response structure`;
+                }
+            } catch (apiError) {
+                console.error(`❌ ${api.name} API Error:`, apiError.message);
+                lastError = `${api.name}: ${apiError.message}`;
+
+                // 2 second wait before trying next API
+                if (api !== APIs[APIs.length - 1]) {
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+                }
+            }
         }
 
-        const result = data.result;
+        // Agar sab APIs fail ho gayi
+        if (!downloadUrl) {
+            return await reply(
+                `❌ *All APIs Failed!*\n\n` +
+                `📝 *Last Error:* ${lastError}\n\n` +
+                `🔧 *Possible Reasons:*\n` +
+                `• YouTube blocked the API server\n` +
+                `• Video is age-restricted or private\n` +
+                `• API server is temporarily down\n\n` +
+                `💡 *Try:* Use a different video or try again later`
+            );
+        }
+
+        // Success message before sending video
+        await conn.sendMessage(from, {
+            text: `✅ *Download link found!*\n\n🎬 *Title:* ${apiTitle}\n📊 *Quality:* ${apiQuality}\n🔌 *API:* ${successApi}\n\n⬇️ Sending video...`
+        }, { quoted: mek });
 
         await conn.sendMessage(from, {
-            video: { url: result.download },
-            caption: `🎬 *${result.title}*\n\n👤 *Author:* ${result.author}\n📊 *Quality:* ${result.quality}\n⏱️ *Duration:* ${result.duration}s\n📁 *Format:* ${result.format}\n🔌 *Source:* ${data.source}\n\n*© ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴇʀғᴀɴ-ᴍᴅ*`
+            video: { url: downloadUrl },
+            caption: `🎬 *${apiTitle}*\n\n📊 *Quality:* ${apiQuality}\n🔌 *Source:* ${successApi}\n\n*© ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴇʀғᴀɴ-ᴍᴅ*`
         }, { quoted: mek });
 
         await conn.sendMessage(from, { react: { text: '✅', key: m.key } });
 
     } catch (e) {
         console.error("❌ Error in .ytv command:", e);
-        await reply("⚠️ Something went wrong!\n\nError: " + e.message);
+        await reply("⚠️ *Critical Error!*\n\nError: " + e.message + "\n\nPlease try again later.");
         await conn.sendMessage(from, { react: { text: '❌', key: m.key } });
     }
 });
