@@ -1,4 +1,3 @@
-
 // ERFAN-MD
 import { fileURLToPath } from 'url';
 import axios from 'axios';
@@ -8,14 +7,14 @@ import { cmd } from '../command.js';
 const __filename = fileURLToPath(import.meta.url);
 
 // ═══════════════════════════════════════════════════════════
-// 🎬 VIDEO COMMAND (UPDATED API)
+// 🎬 VIDEO COMMAND - XEMOZ API (TESTED & WORKING)
 // ═══════════════════════════════════════════════════════════
 cmd({
     pattern: "ytv",
     alias: ["ytmp4", "video3"],
     desc: "Download YouTube video (MP4)",
     category: "download",
-    react: "😡",
+    react: "📹",
     filename: __filename
 }, async (conn, mek, m, { from, q, reply }) => {
     try {
@@ -50,24 +49,24 @@ cmd({
         }, { quoted: mek });
 
         // ═══════════════════════════════════════════════════════════
-        // 🔄 NEW API INTEGRATION - LexCode API
+        // 🔄 XEMOZ API INTEGRATION - TESTED & WORKING
         // ═══════════════════════════════════════════════════════════
-        const apiUrl = `https://api.lexcode.biz.id/api/dwn/ytdl?url=${encodeURIComponent(url)}&format=`;
+        const apiUrl = `https://api-xemoz-official.my.id/api/donwloader/ytmp4.php?url=${encodeURIComponent(url)}`;
         
-        const { data } = await axios.get(apiUrl, { timeout: 60000 });
+        const { data } = await axios.get(apiUrl, { timeout: 120000 });
 
-        // Show API response for debugging
+        // Show API response in console for debugging
         console.log("📊 API Response:", JSON.stringify(data, null, 2));
 
-        if (!data?.success || !data?.result?.download_url) {
+        if (!data?.status || !data?.result?.download) {
             return await reply("❌ Failed to fetch download link! API response invalid.\n\nResponse: " + JSON.stringify(data));
         }
 
         const result = data.result;
 
         await conn.sendMessage(from, {
-            video: { url: result.download_url },
-            caption: `🎬 *${result.title}*\n\n📊 *Quality:* ${result.quality}p\n⏱️ *Duration:* ${result.duration}\n📁 *Type:* ${result.type}\n\n*© ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴇʀғᴀɴ-ᴍᴅ*`
+            video: { url: result.download },
+            caption: `🎬 *${result.title}*\n\n👤 *Author:* ${result.author}\n📊 *Quality:* ${result.quality}\n⏱️ *Duration:* ${result.duration}s\n📁 *Format:* ${result.format}\n🔌 *Source:* ${data.source}\n\n*© ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴇʀғᴀɴ-ᴍᴅ*`
         }, { quoted: mek });
 
         await conn.sendMessage(from, { react: { text: '✅', key: m.key } });
