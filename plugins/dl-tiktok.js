@@ -4,180 +4,131 @@ import path from 'path';
 import axios from 'axios';
 import { cmd } from '../command.js';
 import config from '../config.js';
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// ═══════════════════════════════════════════════════════════
+// 🎵 TIKTOK COMMAND - FAST & OPTIMIZED
+// ═══════════════════════════════════════════════════════════
+
+const TIKTOK_APIS = [
+    {
+        name: "Xemoz",
+        url: (ttUrl) => `https://api-xemoz-official.my.id/api/donwloader/tiktok.php?url=${encodeURIComponent(ttUrl)}`,
+        checkResponse: (data) => data?.status === true && data?.result?.result?.video?.length > 0,
+        getVideoUrl: (data) => data.result.result.video[0],
+        getUsername: (data) => data.result.result.username,
+        getDuration: (data) => data.result.result.duration,
+        getStats: (data) => data.result.result.stats,
+        getType: (data) => data.result.result.type
+    }
+];
 
 cmd({
     pattern: "tiktok",
     alias: ["tt", "ttdl"],
-    desc: "Download TikTok video using multiple APIs",
+    desc: "Download TikTok video",
     category: "download",
     react: "🎵",
     filename: __filename
 }, async (conn, mek, m, { from, q, reply, userConfig }) => {
     try {
-        if (!q) return await reply("🎯 Please provide a valid TikTok link!\n\nExample:\n.tt link");
+        if (!q) return await reply("🎯 Please provide a valid TikTok link!\n\nExample: `.tt link`");
 
         await conn.sendMessage(from, { react: { text: '⏳', key: m.key } });
 
-        let videoUrl, title, author, username;
+        // ═══════════════════════════════════════════════════════════
+        // 🚀 FAST PARALLEL API CALLS
+        // ═══════════════════════════════════════════════════════════
 
-        // Try First API: https://jawad-tech.vercel.app/download/tiktok?url=
-        try {
-            const api1 = `https://jawad-tech.vercel.app/download/tiktok?url=${encodeURIComponent(q)}`;
-            const res1 = await axios.get(api1);
-            const data1 = res1.data;
-
-            if (data1?.status && data1?.result) {
-                videoUrl = data1.result;
-                title = data1.metadata?.title || "Unknown Title";
-                author = data1.metadata?.author || "Unknown Author";
-                username = data1.metadata?.username || "unknown";
-            } else {
-                throw new Error("First API failed");
-            }
-        } catch (api1Error) {
-            // Try Second API: https://jawad-tech.vercel.app/download/ttdl?url=
-            try {
-                const api2 = `https://jawad-tech.vercel.app/download/ttdl?url=${encodeURIComponent(q)}`;
-                const res2 = await axios.get(api2);
-                const data2 = res2.data;
-
-                if (data2?.status && data2?.result) {
-                    videoUrl = data2.result;
-                    title = data2.metadata?.title || "Unknown Title";
-                    author = data2.metadata?.author?.nickname || data2.metadata?.author || "Unknown Author";
-                    username = data2.metadata?.author?.username?.replace('@', '') || "unknown";
-                } else {
-                    throw new Error("Second API also failed");
+        const apiPromises = TIKTOK_APIS.map(api => 
+            axios.get(api.url(q), { 
+                timeout: 30000,
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
                 }
-            } catch (api2Error) {
-                return await reply("❌ Both APIs failed! Try again later.");
+            })
+            .then(response => ({ 
+                success: true, 
+                api: api, 
+                data: response.data 
+            }))
+            .catch(error => ({ 
+                success: false, 
+                api: api, 
+                error: error.message 
+            }))
+        );
+
+        const results = await Promise.all(apiPromises);
+
+        let videoUrl = null;
+        let username = "Unknown";
+        let duration = "0:00";
+        let stats = { views: "0", likes: "0", comments: "0", shares: "0" };
+        let videoType = "video";
+        let successApi = "";
+        let errors = [];
+
+        for (const result of results) {
+            if (result.success) {
+                const api = result.api;
+                const data = result.data;
+
+                console.log(`📊 ${api.name} Response:`, JSON.stringify(data, null, 2));
+
+                if (api.checkResponse(data)) {
+                    videoUrl = api.getVideoUrl(data);
+                    username = api.getUsername(data) || "Unknown";
+                    duration = api.getDuration(data) || "0:00";
+                    stats = api.getStats(data) || stats;
+                    videoType = api.getType(data) || "video";
+                    successApi = api.name;
+                    console.log(`✅ ${api.name} API Success!`);
+                    break;
+                } else {
+                    errors.push(`${api.name}: Invalid response`);
+                }
+            } else {
+                errors.push(`${result.api.name}: ${result.error}`);
             }
         }
 
-        if (!videoUrl) return await reply("❌ Download failed! No video URL found.");
+        if (!videoUrl) {
+            return await reply(
+                `❌ *Download Failed!*\n\n` +
+                `📝 *Errors:*\n${errors.map(e => `• ${e}`).join('\n')}\n\n` +
+                `🔧 *Try:* Different link ya baad mein try karo`
+            );
+        }
 
-        // Get BOT_NAME from userConfig if available, otherwise use config.BOT_NAME or default
         const BOT_NAME = userConfig?.BOT_NAME || config.BOT_NAME || "ERFAN-MD";
 
-        // 🎥 Send TikTok video with info in caption
+        // ═══════════════════════════════════════════════════════════
+        // 🚀 DIRECT VIDEO SEND - No intermediate message
+        // ═══════════════════════════════════════════════════════════
+
         await conn.sendMessage(from, {
             video: { url: videoUrl },
             mimetype: 'video/mp4',
-            caption: `🎵 ${title}\n👤 *Author:* ${author}\n⚡ *Username:* @${username}\n\n> *Powered by ${BOT_NAME} ✅*`
+            caption: `🎵 *TikTok Downloader*\n\n` +
+                     `👤 *Username:* ${username}\n` +
+                     `⏱️ *Duration:* ${duration}\n` +
+                     `📊 *Stats:*\n` +
+                     `   👁️ Views: ${stats.views}\n` +
+                     `   ❤️ Likes: ${stats.likes}\n` +
+                     `   💬 Comments: ${stats.comments}\n` +
+                     `   🔄 Shares: ${stats.shares}\n\n` +
+                     `🔌 *Source:* ${successApi}\n` +
+                     `*Powered by ${BOT_NAME} ✅*`
         }, { quoted: mek });
 
         await conn.sendMessage(from, { react: { text: '✅', key: m.key } });
 
     } catch (e) {
-        console.error("Error in .tiktok:", e);
-        await reply("❌ Error occurred while downloading TikTok video!");
-        await conn.sendMessage(from, { react: { text: '❌', key: m.key } });
-    }
-});
-
-cmd({
-    pattern: "tiktok2",
-    alias: ["tt2", "ttdl2"],
-    desc: "Download TikTok video using JawadTech API",
-    category: "download",
-    react: "🎬",
-    filename: __filename
-}, async (conn, mek, m, { from, q, reply, userConfig }) => {
-    try {
-        if (!q) return await reply("🎯 Please provide a valid TikTok link!\n\nExample:\n.tt2 link");
-
-        await conn.sendMessage(from, { react: { text: '⏳', key: m.key } });
-
-        // Fetch TikTok data
-        const api = `https://jawad-tech.vercel.app/download/tiktok?url=${encodeURIComponent(q)}`;
-        const res = await axios.get(api);
-        const json = res.data;
-
-        if (!json?.status || !json?.result)
-            return await reply("❌ Download failed! Try again later.");
-
-        const meta = json.metadata;
-        
-        // Get BOT_NAME from userConfig if available, otherwise use config.BOT_NAME or default
-        const BOT_NAME = userConfig?.BOT_NAME || config.BOT_NAME || "JawadTechXD";
-
-        // 🎥 Send TikTok video with info in caption
-        await conn.sendMessage(from, {
-            video: { url: json.result },
-            mimetype: 'video/mp4',
-            caption: `🎵 *${meta.title}*\n👤 *Author:* ${meta.author}\n📱 *Username:* @${meta.username}\n🌍 *Region:* ${meta.region}\n\n✨ *Powered by ${BOT_NAME}*`
-        }, { quoted: mek });
-
-        await conn.sendMessage(from, { react: { text: '✅', key: m.key } });
-
-    } catch (e) {
-        console.error("Error in .tiktok2:", e);
-        await reply("❌ Error occurred while downloading TikTok video!");
-        await conn.sendMessage(from, { react: { text: '❌', key: m.key } });
-    }
-});
-
-cmd({
-    pattern: "tiktok3",
-    alias: ["tt3", "ttdl3"],
-    desc: "Download HD TikTok videos using JawadTechXD API",
-    category: "download",
-    react: "🎬",
-    filename: __filename
-}, async (conn, mek, m, { from, q, reply, userConfig }) => {
-    try {
-        if (!q) return await reply("🎯 Please provide a valid TikTok link!\n\nExample:\n.tt3 link ");
-
-        await conn.sendMessage(from, { react: { text: '⏳', key: m.key } });
-
-        // 🌐 Fetch TikTok data from JawadTech API
-        const api = `https://jawad-tech.vercel.app/download/ttdl?url=${encodeURIComponent(q)}`;
-        const res = await axios.get(api);
-        const json = res.data;
-
-        if (!json?.status || !json?.result)
-            return await reply("❌ Download failed! Try again later.");
-
-        const meta = json.metadata;
-        
-        // Get BOT_NAME from userConfig if available, otherwise use config.BOT_NAME or default
-        const BOT_NAME = userConfig?.BOT_NAME || config.BOT_NAME || "JawadTechXD";
-
-        // 🎥 Send TikTok video with detailed caption
-        const caption = `
-🎬 *${meta.title}*
-
-👤 *Author:* ${meta.author.nickname} (${meta.author.username})
-🎵 *Music:* ${meta.music.title}
-💿 *By:* ${meta.music.author}
-
-📊 *Stats:*
-   • Views: ${meta.stats.views}
-   • Likes: ${meta.stats.likes}
-   • Shares: ${meta.stats.shares}
-   • Comments: ${meta.stats.comments}
-   • Downloads: ${meta.stats.downloads}
-
-🌍 *Region:* ${meta.region}
-🕒 *Duration:* ${meta.duration}s
-📅 *Published:* ${meta.published}
-
-✨ *Powered by ${BOT_NAME}*
-        `.trim();
-
-        await conn.sendMessage(from, {
-            video: { url: json.result },
-            mimetype: 'video/mp4',
-            caption
-        }, { quoted: mek });
-
-        await conn.sendMessage(from, { react: { text: '✅', key: m.key } });
-
-    } catch (e) {
-        console.error("Error in .tiktok3:", e);
-        await reply("❌ Error occurred while downloading TikTok video!");
+        console.error("❌ Error in .tiktok:", e);
+        await reply("⚠️ *Error:* " + e.message);
         await conn.sendMessage(from, { react: { text: '❌', key: m.key } });
     }
 });
