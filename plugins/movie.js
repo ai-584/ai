@@ -10,13 +10,12 @@ const __filename = fileURLToPath(import.meta.url);
 
 
 
-
 // ═══════════════════════════════════════════════════════════
-// 🎬 VIDEO COMMAND — MULTI-API FALLBACK CHAIN
+// 🎬 VIDEO COMMAND — FIXED WITH URL ENCODING & LONGER TIMEOUT
 // ═══════════════════════════════════════════════════════════
 cmd({
     pattern: "ytv",
-    alias: ["ytmp4", "video4"],
+    alias: ["ytmp4", "vide"],
     desc: "Download YouTube video (MP4)",
     category: "download",
     react: "📹",
@@ -53,29 +52,43 @@ cmd({
             caption: `*🎬 VIDEO DOWNLOADER*\n\n🎞️ *Title:* ${videoInfo.title}\n📺 *Channel:* ${videoInfo.author.name}\n🕒 *Duration:* ${videoInfo.timestamp}\n\n*Status:* Downloading Video...\n\n*© ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴇʀғᴀɴ-ᴍᴅ*`
         }, { quoted: mek });
 
-        let videoBuffer = null
-        let downloadSuccess = false
-        let lastError = ""
+        let videoBuffer = null;
+        let downloadSuccess = false;
+        let lastError = "";
 
         // ╔══════════════════════════════════════════════════════════╗
-        // ║  API 1: LexCode ytdl (PRIMARY — URL-based)             ║
+        // ║  API 1: LexCode ytdl (PRIMARY — URL-encoded!)            ║
         // ╚══════════════════════════════════════════════════════════╝
         if (!downloadSuccess) {
             try {
-                const apiUrl = `https://api.lexcode.biz.id/api/dwn/ytdl?url=${encodeURIComponent(url)}`;
-                const { data } = await axios.get(apiUrl, { timeout: 30000 });
+                // 🔑 FIX: URL-encode the YouTube URL!
+                const encodedUrl = encodeURIComponent(url);
+                const apiUrl = `https://api.lexcode.biz.id/api/dwn/ytdl?url=${encodedUrl}`;
+                
+                console.log("Video API URL:", apiUrl);
+                
+                const { data } = await axios.get(apiUrl, { timeout: 60000 }); // 60s for API response
+
+                console.log("Video API Response:", JSON.stringify(data, null, 2));
 
                 if (data?.success === true && data?.result?.download_url) {
-                    const videoUrl = data.result.download_url;
-                    const videoRes = await axios.get(videoUrl, {
+                    const videoDownloadUrl = data.result.download_url;
+                    console.log("Video download URL:", videoDownloadUrl);
+                    
+                    // 🔑 FIX: Longer timeout for video download (up to 3 minutes)
+                    const videoRes = await axios.get(videoDownloadUrl, {
                         responseType: 'arraybuffer',
-                        timeout: 180000
+                        timeout: 180000, // 3 minutes
+                        maxContentLength: 100 * 1024 * 1024, // 100MB max
+                        maxBodyLength: 100 * 1024 * 1024
                     });
+                    
                     videoBuffer = Buffer.from(videoRes.data);
                     downloadSuccess = true;
-                    console.log("✅ API 1 (LexCode ytdl) Success!");
+                    console.log("✅ API 1 (LexCode ytdl) Success! Size:", videoBuffer.length);
                 } else {
-                    lastError = "LexCode ytdl: No download URL";
+                    lastError = `LexCode ytdl: success=${data?.success}, has_url=${!!data?.result?.download_url}`;
+                    console.log("❌ API 1: Invalid response structure");
                 }
             } catch (e) {
                 lastError = `LexCode ytdl: ${e.message}`;
@@ -84,24 +97,30 @@ cmd({
         }
 
         // ╔══════════════════════════════════════════════════════════╗
-        // ║  API 2: LexCode ytplay (FALLBACK — query-based)          ║
+        // ║  API 2: LexCode ytplay (FALLBACK — search by title)      ║
         // ╚══════════════════════════════════════════════════════════╝
         if (!downloadSuccess) {
             try {
-                const apiUrl = `https://api.lexcode.biz.id/api/dwn/ytplay?q=${encodeURIComponent(videoInfo.title)}`;
-                const { data } = await axios.get(apiUrl, { timeout: 30000 });
+                const encodedQuery = encodeURIComponent(videoInfo.title);
+                const apiUrl = `https://api.lexcode.biz.id/api/dwn/ytplay?q=${encodedQuery}`;
+                
+                const { data } = await axios.get(apiUrl, { timeout: 60000 });
 
                 if (data?.status === true && data?.result?.download?.mp4) {
-                    const videoUrl = data.result.download.mp4;
-                    const videoRes = await axios.get(videoUrl, {
+                    const videoDownloadUrl = data.result.download.mp4;
+                    
+                    const videoRes = await axios.get(videoDownloadUrl, {
                         responseType: 'arraybuffer',
-                        timeout: 180000
+                        timeout: 180000,
+                        maxContentLength: 100 * 1024 * 1024,
+                        maxBodyLength: 100 * 1024 * 1024
                     });
+                    
                     videoBuffer = Buffer.from(videoRes.data);
                     downloadSuccess = true;
                     console.log("✅ API 2 (LexCode ytplay mp4) Success!");
                 } else {
-                    lastError = "LexCode ytplay: No mp4 URL";
+                    lastError = `LexCode ytplay: status=${data?.status}, has_mp4=${!!data?.result?.download?.mp4}`;
                 }
             } catch (e) {
                 lastError = `LexCode ytplay: ${e.message}`;
@@ -110,45 +129,52 @@ cmd({
         }
 
         // ╔══════════════════════════════════════════════════════════╗
-        // ║  API 3: Retry LexCode ytdl with title search (FALLBACK 2)  ║
+        // ║  API 3: Retry with video URL as query (FALLBACK 2)       ║
         // ╚══════════════════════════════════════════════════════════╝
         if (!downloadSuccess) {
             try {
-                const apiUrl = `https://api.lexcode.biz.id/api/dwn/ytdl?url=${encodeURIComponent(videoInfo.url)}`;
-                const { data } = await axios.get(apiUrl, { timeout: 30000 });
+                const encodedUrl = encodeURIComponent(videoInfo.url);
+                const apiUrl = `https://api.lexcode.biz.id/api/dwn/ytplay?q=${encodedUrl}`;
+                
+                const { data } = await axios.get(apiUrl, { timeout: 60000 });
 
-                if (data?.success === true && data?.result?.download_url) {
-                    const videoUrl = data.result.download_url;
-                    const videoRes = await axios.get(videoUrl, {
+                if (data?.status === true && data?.result?.download?.mp4) {
+                    const videoDownloadUrl = data.result.download.mp4;
+                    
+                    const videoRes = await axios.get(videoDownloadUrl, {
                         responseType: 'arraybuffer',
-                        timeout: 180000
+                        timeout: 180000,
+                        maxContentLength: 100 * 1024 * 1024,
+                        maxBodyLength: 100 * 1024 * 1024
                     });
+                    
                     videoBuffer = Buffer.from(videoRes.data);
                     downloadSuccess = true;
-                    console.log("✅ API 3 (LexCode ytdl retry) Success!");
+                    console.log("✅ API 3 (LexCode ytplay URL retry) Success!");
                 } else {
-                    lastError = "LexCode ytdl retry: No download URL";
+                    lastError = `LexCode ytplay retry: status=${data?.status}, has_mp4=${!!data?.result?.download?.mp4}`;
                 }
             } catch (e) {
-                lastError = `LexCode ytdl retry: ${e.message}`;
-                console.log("❌ API 3 (LexCode ytdl retry) Failed:", e.message);
+                lastError = `LexCode ytplay retry: ${e.message}`;
+                console.log("❌ API 3 (LexCode ytplay retry) Failed:", e.message);
             }
         }
 
         // ═══════════════════════════════════════════════════════════
         // 📤 Send Video or Error Message
         // ═══════════════════════════════════════════════════════════
-        if (downloadSuccess && videoBuffer) {
+        if (downloadSuccess && videoBuffer && videoBuffer.length > 1000) {
             await conn.sendMessage(from, {
                 video: videoBuffer,
                 caption: `🎬 *${videoInfo.title}*\n\n*© ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴇʀғᴀɴ-ᴍᴅ*`
             }, { quoted: mek });
 
             await conn.sendMessage(from, { react: { text: '✅', key: m.key } });
+            console.log(`✅ Video sent successfully! Size: ${(videoBuffer.length / 1024 / 1024).toFixed(2)} MB`);
         } else {
             await conn.sendMessage(from, { react: { text: '❌', key: m.key } });
             console.log("❌ All video APIs failed. Last error:", lastError);
-            return await reply("❌ Failed to download video! All APIs are busy. Please try again later.");
+            return await reply("❌ Failed to download video! Server may be busy. Please try again later.");
         }
 
     } catch (e) {
