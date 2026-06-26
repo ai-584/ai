@@ -31,7 +31,7 @@ const APIs = [
 
 cmd({
     pattern: "ytv",
-    alias: ["ytmp4", "video"],
+    alias: ["ytmp4", "vide"],
     desc: "Download YouTube video (MP4)",
     category: "download",
     react: "📹",
