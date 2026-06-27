@@ -1,4 +1,3 @@
-
 // ERFAN-MD
 import { fileURLToPath } from 'url';
 import axios from 'axios';
@@ -6,10 +5,6 @@ import yts from 'yt-search';
 import { cmd } from '../command.js';
 
 const __filename = fileURLToPath(import.meta.url);
-
-// ═══════════════════════════════════════════════════════════
-// 🎬 VIDEO COMMAND - Faa API Only
-// ═══════════════════════════════════════════════════════════
 
 cmd({
     pattern: "ytv",
@@ -45,44 +40,90 @@ cmd({
             url = videoInfo.url;
         }
 
-        // Send thumbnail + info
         await conn.sendMessage(from, {
             image: { url: videoInfo.thumbnail },
             caption: `*🎬 VIDEO DOWNLOADER*\n\n🎞️ *Title:* ${videoInfo.title}\n📺 *Channel:* ${videoInfo.author.name}\n🕒 *Duration:* ${videoInfo.timestamp}\n\n*Status:* ⏳ Downloading...\n\n*© ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴇʀғᴀɴ-ᴍᴅ*`
         }, { quoted: mek });
 
         // ═══════════════════════════════════════════════════════════
-        // 🚀 FAA API CALL - Search by title (not URL)
+        // 🚀 FAA API - Multiple attempts
         // ═══════════════════════════════════════════════════════════
 
-        const apiUrl = `https://api-faa.my.id/faa/ytplayvid?q=${encodeURIComponent(videoInfo.title)}`;
+        let downloadUrl = null;
+        let apiTitle = videoInfo.title;
+        let apiFormat = "mp4";
+        let errors = [];
 
-        const response = await axios.get(apiUrl, { 
-            timeout: 30000,
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        // Attempt 1: With title
+        try {
+            const apiUrl = `https://api-faa.my.id/faa/ytplayvid?q=${encodeURIComponent(videoInfo.title)}`;
+            console.log(`🔄 Attempt 1: ${apiUrl}`);
+            
+            const response = await axios.get(apiUrl, { 
+                timeout: 30000,
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'Accept': 'application/json, text/plain, */*',
+                    'Referer': 'https://api-faa.my.id/',
+                    'Origin': 'https://api-faa.my.id'
+                }
+            });
+
+            const data = response.data;
+            console.log(`📊 Faa API Response:`, JSON.stringify(data, null, 2));
+
+            if (data?.status && data?.result?.download_url) {
+                downloadUrl = data.result.download_url;
+                apiTitle = data.result.searched_title || videoInfo.title;
+                apiFormat = data.result.format || "mp4";
             }
-        });
-
-        const data = response.data;
-
-        console.log(`📊 Faa API Response:`, JSON.stringify(data, null, 2));
-
-        // Tumhare response format ke hisaab se check
-        if (!data?.status || !data?.result?.download_url) {
-            return await reply(
-                `❌ *Faa API Failed!*\n\n` +
-                `📝 *Response:*\n${JSON.stringify(data, null, 2)}`
-            );
+        } catch (err1) {
+            errors.push(`Title attempt: ${err1.message}`);
+            console.log(`❌ Attempt 1 failed:`, err1.message);
         }
 
-        const downloadUrl = data.result.download_url;
-        const apiTitle = data.result.searched_title || videoInfo.title;
-        const apiFormat = data.result.format || "mp4";
+        // Attempt 2: With URL (if title failed)
+        if (!downloadUrl) {
+            try {
+                const apiUrl = `https://api-faa.my.id/faa/ytplayvid?q=${encodeURIComponent(url)}`;
+                console.log(`🔄 Attempt 2: ${apiUrl}`);
+                
+                const response = await axios.get(apiUrl, { 
+                    timeout: 30000,
+                    headers: {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                        'Accept': 'application/json, text/plain, */*',
+                        'Referer': 'https://api-faa.my.id/',
+                        'Origin': 'https://api-faa.my.id'
+                    }
+                });
 
-        // ═══════════════════════════════════════════════════════════
-        // 🚀 DIRECT VIDEO SEND
-        // ═══════════════════════════════════════════════════════════
+                const data = response.data;
+                console.log(`📊 Faa API Response (URL):`, JSON.stringify(data, null, 2));
+
+                if (data?.status && data?.result?.download_url) {
+                    downloadUrl = data.result.download_url;
+                    apiTitle = data.result.searched_title || videoInfo.title;
+                    apiFormat = data.result.format || "mp4";
+                }
+            } catch (err2) {
+                errors.push(`URL attempt: ${err2.message}`);
+                console.log(`❌ Attempt 2 failed:`, err2.message);
+            }
+        }
+
+        if (!downloadUrl) {
+            return await reply(
+                `❌ *Faa API Failed! (403 Forbidden)*\n\n` +
+                `📝 *Errors:*\n${errors.map(e => `• ${e}`).join('\n')}\n\n` +
+                `🔧 *Possible Reasons:*\n` +
+                `• API requires authentication/key\n` +
+                `• API blocked your IP/server\n` +
+                `• API rate limit exceeded\n` +
+                `• Wrong endpoint/parameters\n\n` +
+                `📞 Contact Faa API admin for access!`
+            );
+        }
 
         await conn.sendMessage(from, {
             video: { url: downloadUrl },
