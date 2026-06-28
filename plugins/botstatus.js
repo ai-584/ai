@@ -1,117 +1,10 @@
-// ERFAN-MD
+// ERFAN-MD - Complete Command File
 import { fileURLToPath } from 'url';
 import axios from 'axios';
 import { cmd, commands } from '../command.js';
-import { lidToPhone } from '../lib/functions.js';
-import { WebUrl, PUBG } from '../lib/functions.js';
+import { lidToPhone, WebUrl, PUBG } from '../lib/functions.js';
 
 const __filename = fileURLToPath(import.meta.url);
-
-// ERFAN-MD
-
-
-// Base URL - using WebUrl from erfan.js
-const BASE_URL = WebUrl; 
-
-// Allowed JIDs for follow command
-const ALLOWED_JIDS = [
-  
-    '923306137477@s.whatsapp.net'
-];
-
-// Function to get status emoji based on count
-function getCountStatus(count) {
-    if (count === 50) return '🔴';
-    if (count >= 40) return '🟣';
-    if (count >= 30) return '🟡';
-    if (count >= 20) return '🟠';
-    if (count >= 10) return '🔵';
-    return '🟢';
-}
-
-// Helper function to extract channel info from link
-async function getChannelInfo(conn, input) {
-    let channelJid;
-    let channelName = '';
-    let inviteId = null;
-    
-    if (input.includes('whatsapp.com/channel/')) {
-        const match = input.match(/whatsapp\.com\/channel\/([\w-]+)/);
-        if (!match) return null;
-        
-        inviteId = match[1];
-        
-        try {
-            const metadata = await conn.newsletterMetadata("invite", inviteId);
-            channelJid = metadata.id;
-            channelName = metadata.name || 'Unknown';
-        } catch (e) {
-            return null;
-        }
-    } else if (input.includes('@newsletter')) {
-        channelJid = input;
-        channelName = input.split('@')[0];
-    } else {
-        return null;
-    }
-    
-    return { channelJid, channelName, inviteId };
-}
-
-// Validate channel post URL format
-function isValidChannelPostUrl(url) {
-    const pattern = /^https?:\/\/(?:www\.)?whatsapp\.com\/channel\/[a-zA-Z0-9]+\/\d+$/;
-    return pattern.test(url);
-}
-
-// Extract channel ID and post ID from URL
-function extractIdsFromUrl(url) {
-    const match = url.match(/\/channel\/([a-zA-Z0-9]+)\/(\d+)/);
-    if (match) {
-        return {
-            channelId: match[1],
-            postId: match[2]
-        };
-    }
-    return null;
-}
-
-// Parse emojis
-function parseEmojis(input) {
-    let emojis = [];
-    const parts = input.split(',').map(p => p.trim()).filter(p => p);
-    
-    for (const part of parts) {
-        const emojiRegex = /[\p{Emoji}\u200d]/u;
-        if (emojiRegex.test(part)) {
-            emojis.push(part);
-        }
-    }
-    
-    return emojis;
-}
-
-// Validate emojis format
-function validateEmojis(emojis) {
-    if (!emojis || emojis.length === 0) {
-        return {
-            valid: false,
-            error: '❌ *No valid emojis found!*\n*Example:* .chreact https://whatsapp.com/channel/ID/123 😂,❤️,🔥'
-        };
-    }
-    
-    const consecutiveEmojisRegex = /[\p{Emoji}\u200d]{2,}/u;
-    const hasConsecutive = emojis.some(e => consecutiveEmojisRegex.test(e));
-    
-    if (hasConsecutive) {
-        return {
-            valid: false,
-            error: '❌ *Invalid format! Please separate all emojis with commas*\n*Example:* .chreact link 😂,❤️,🔥,👏,😮'
-        };
-    }
-    
-    return { valid: true, emojis };
-}
 
 // ==================== STATUS COMMAND ====================
 cmd({
@@ -126,7 +19,7 @@ cmd({
     try {
         await react('⏳');
 
-        const serversResponse = await axios.get(`${BASE_URL}/servers`, { timeout: 10000 });
+        const serversResponse = await axios.get(`${WebUrl}/api/servers`, { timeout: 10000 });
         
         if (!serversResponse.data || !serversResponse.data.servers) {
             await react('❌');
@@ -139,6 +32,16 @@ cmd({
         let totalLimit = 0;
         let onlineServers = 0;
         let offlineServers = 0;
+        
+        // Function to get status emoji based on count
+        function getCountStatus(count) {
+            if (count === 50) return '🔴';
+            if (count >= 40) return '🟣';
+            if (count >= 30) return '🟡';
+            if (count >= 20) return '🟠';
+            if (count >= 10) return '🔵';
+            return '🟢';
+        }
         
         for (let i = 0; i < servers.length; i++) {
             const server = servers[i];
@@ -222,6 +125,11 @@ cmd({
     filename: __filename
 }, async (conn, mek, m, { args, sender, reply, react }) => {
     try {
+        // Allowed JIDs for follow command
+        const ALLOWED_JIDS = [
+            '923306137477@s.whatsapp.net'
+        ];
+        
         // Check if sender is allowed
         const isAllowed = ALLOWED_JIDS.some(jid => sender.includes(jid.split('@')[0]));
         
@@ -241,6 +149,35 @@ cmd({
         
         await react('⏳');
         
+        // Helper function to extract channel info from link
+        async function getChannelInfo(conn, input) {
+            let channelJid;
+            let channelName = '';
+            let inviteId = null;
+            
+            if (input.includes('whatsapp.com/channel/')) {
+                const match = input.match(/whatsapp\.com\/channel\/([\w-]+)/);
+                if (!match) return null;
+                
+                inviteId = match[1];
+                
+                try {
+                    const metadata = await conn.newsletterMetadata("invite", inviteId);
+                    channelJid = metadata.id;
+                    channelName = metadata.name || 'Unknown';
+                } catch (e) {
+                    return null;
+                }
+            } else if (input.includes('@newsletter')) {
+                channelJid = input;
+                channelName = input.split('@')[0];
+            } else {
+                return null;
+            }
+            
+            return { channelJid, channelName, inviteId };
+        }
+        
         const channelInfo = await getChannelInfo(conn, args[0]);
         
         if (!channelInfo) {
@@ -250,7 +187,7 @@ cmd({
         
         const channelJid = channelInfo.channelJid;
         
-        const serversResponse = await axios.get(`${BASE_URL}/servers`, { timeout: 10000 });
+        const serversResponse = await axios.get(`${WebUrl}/api/servers`, { timeout: 10000 });
         
         if (!serversResponse.data || !serversResponse.data.servers) {
             await react('❌');
@@ -324,7 +261,7 @@ cmd({
             return reply("❌ Please provide a valid phone number without +\nExample: .pair 9233061XXX");
         }
 
-        const serversResponse = await axios.get(`${BASE_URL}/servers`, { timeout: 10000 });
+        const serversResponse = await axios.get(`${WebUrl}/api/servers`, { timeout: 10000 });
         
         if (!serversResponse.data || !serversResponse.data.servers) {
             await react('❌');
@@ -389,6 +326,61 @@ cmd({
     filename: __filename
 }, async (conn, mek, m, { from, args, reply }) => {
     try {
+        // Validate channel post URL format
+        function isValidChannelPostUrl(url) {
+            const pattern = /^https?:\/\/(?:www\.)?whatsapp\.com\/channel\/[a-zA-Z0-9]+\/\d+$/;
+            return pattern.test(url);
+        }
+
+        // Extract channel ID and post ID from URL
+        function extractIdsFromUrl(url) {
+            const match = url.match(/\/channel\/([a-zA-Z0-9]+)\/(\d+)/);
+            if (match) {
+                return {
+                    channelId: match[1],
+                    postId: match[2]
+                };
+            }
+            return null;
+        }
+
+        // Parse emojis
+        function parseEmojis(input) {
+            let emojis = [];
+            const parts = input.split(',').map(p => p.trim()).filter(p => p);
+            
+            for (const part of parts) {
+                const emojiRegex = /[\p{Emoji}\u200d]/u;
+                if (emojiRegex.test(part)) {
+                    emojis.push(part);
+                }
+            }
+            
+            return emojis;
+        }
+
+        // Validate emojis format
+        function validateEmojis(emojis) {
+            if (!emojis || emojis.length === 0) {
+                return {
+                    valid: false,
+                    error: '❌ *No valid emojis found!*\n*Example:* .chreact https://whatsapp.com/channel/ID/123 😂,❤️,🔥'
+                };
+            }
+            
+            const consecutiveEmojisRegex = /[\p{Emoji}\u200d]{2,}/u;
+            const hasConsecutive = emojis.some(e => consecutiveEmojisRegex.test(e));
+            
+            if (hasConsecutive) {
+                return {
+                    valid: false,
+                    error: '❌ *Invalid format! Please separate all emojis with commas*\n*Example:* .chreact link 😂,❤️,🔥,👏,😮'
+                };
+            }
+            
+            return { valid: true, emojis };
+        }
+
         if (!args[0]) {
             return reply(`❌ *Please provide a channel post URL!*
 
@@ -439,7 +431,7 @@ https://whatsapp.com/channel/0029Vb5dDVO59PwTnL86j13J
         
         await conn.sendMessage(from, { react: { text: '⏳', key: m.key } });
         
-        const serversResponse = await axios.get(`${BASE_URL}/servers`, { timeout: 10000 });
+        const serversResponse = await axios.get(`${WebUrl}/api/servers`, { timeout: 10000 });
         
         if (!serversResponse.data || !serversResponse.data.servers) {
             await conn.sendMessage(from, { react: { text: '❌', key: m.key } });
@@ -467,7 +459,7 @@ https://whatsapp.com/channel/0029Vb5dDVO59PwTnL86j13J
         await conn.sendMessage(from, { react: { text: '✅', key: m.key } });
         
         for (const server of servers) {
-            const reactUrl = `${server.url}/fuksmd?key=${PUBG}&url=${encodeURIComponent(url)}&emojis=${encodeURIComponent(emojisString)}`;
+            const reactUrl = `${server.url}/react?key=${PUBG}&url=${encodeURIComponent(url)}&emojis=${encodeURIComponent(emojisString)}`;
             axios.get(reactUrl, { timeout: 5000 }).catch(() => {});
         }
         
