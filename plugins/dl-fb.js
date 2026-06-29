@@ -49,7 +49,13 @@ async (conn, mek, m, { from, q, reply, react }) => {
             return reply("❌ Video download URL not found.");
         }
 
-        
+        // ✅ Send info message (simplified)
+        await reply(
+            `📘 *FACEBOOK DOWNLOADER*\n\n` +
+            `🖼 *Thumbnail:* ${data.result.thumbnail ? 'Available' : 'Not Found'}\n` +
+            `📹 *Quality:* ${media.quality || 'Best'}\n\n` +
+            `📥 Downloading video... Please wait.`
+        );
 
         // Download media buffer
         const response = await axios.get(media.url, {
