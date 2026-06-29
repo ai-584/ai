@@ -28,34 +28,27 @@ async (conn, mek, m, { from, q, reply, react }) => {
         // React loading
         await react("⬇️");
 
-        // ✅ NEW LexCode API URL
+        // LexCode API URL
         const apiUrl = `https://api.lexcode.biz.id/api/dwn/facebook?url=${encodeURIComponent(q)}`;
 
         // Fetch API Data
         const { data } = await axios.get(apiUrl, { timeout: 30000 });
 
-        // ✅ Validate response (New Structure)
+        // Validate response
         if (!data || !data.success || !data.result || !data.result.downloads || !data.result.downloads.length) {
             await react("❌");
             return reply("❌ Failed to fetch Facebook video. Try another link.");
         }
 
-        // ✅ Get the first download URL
+        // Get the first download URL
         const media = data.result.downloads[0];
 
-        // Validate media URL
         if (!media.url) {
             await react("❌");
             return reply("❌ Video download URL not found.");
         }
 
-        // ✅ Send info message (simplified)
-        await reply(
-            `📘 *FACEBOOK DOWNLOADER*\n\n` +
-            `🖼 *Thumbnail:* ${data.result.thumbnail ? 'Available' : 'Not Found'}\n` +
-            `📹 *Quality:* ${media.quality || 'Best'}\n\n` +
-            `📥 Downloading video... Please wait.`
-        );
+        // ✅ NO INFO MESSAGE — Directly download video
 
         // Download media buffer
         const response = await axios.get(media.url, {
@@ -65,11 +58,11 @@ async (conn, mek, m, { from, q, reply, react }) => {
             maxBodyLength: Infinity
         });
 
-        // Send video
+        // Send video directly with caption
         await conn.sendMessage(from, {
             video: Buffer.from(response.data),
             mimetype: 'video/mp4',
-            caption: `✅ *Video Downloaded Successfully!*\n\n📹 *Quality:* ${media.quality || 'Best'}\n\n> *IT'S ERFAN AHMAD*`
+            caption: `✅ *Downloaded Successfully!*\n\n📹 *Quality:* ${media.quality || 'Best'}\n\n> *IT'S ERFAN AHMAD*`
         }, { quoted: mek });
 
         // Success reaction
