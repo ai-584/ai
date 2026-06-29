@@ -28,28 +28,28 @@ async (conn, mek, m, { from, q, reply, react }) => {
         // React loading
         await react("⬇️");
 
-        // LexCode API URL
-        const apiUrl = `https://api.lexcode.biz.id/api/dwn/facebook?url=${encodeURIComponent(q)}`;
+        // ✅ NEW Ziaul API URL
+        const apiUrl = `https://api.ziaul.my.id/api/downloader/fbdownload?url=${encodeURIComponent(q)}`;
 
         // Fetch API Data
         const { data } = await axios.get(apiUrl, { timeout: 30000 });
 
-        // Validate response
-        if (!data || !data.success || !data.result || !data.result.downloads || data.result.downloads.length === 0) {
+        // ✅ Validate response (New Structure)
+        if (!data || !data.status || !data.data || !data.data.downloads || data.data.downloads.length === 0) {
             await react("❌");
-            return reply("❌ Failed to fetch Facebook video. The video might be private or the link is invalid. Try another link.");
+            return reply("❌ Failed to fetch Facebook video. Try another link.");
         }
 
-        // Get the first download URL
-        const media = data.result.downloads[0];
+        // ✅ Get best quality video URL
+        const videoUrl = data.data.best_quality || data.data.downloads[0].url;
 
-        if (!media.url) {
+        if (!videoUrl) {
             await react("❌");
             return reply("❌ Video download URL not found.");
         }
 
         // Download video buffer
-        const videoResponse = await axios.get(media.url, {
+        const videoResponse = await axios.get(videoUrl, {
             responseType: 'arraybuffer',
             timeout: 120000,
             maxContentLength: Infinity,
@@ -58,11 +58,11 @@ async (conn, mek, m, { from, q, reply, react }) => {
 
         const videoBuffer = Buffer.from(videoResponse.data);
 
-        // Send video directly
+        // Send video
         await conn.sendMessage(from, {
             video: videoBuffer,
             mimetype: 'video/mp4',
-            caption: `✅ *Downloaded Successfully!*\n\n📹 *Quality:* ${media.quality || 'Best'}\n\n> *IT'S ERFAN AHMAD*`
+            caption: `✅ *Downloaded Successfully!*\n\n📹 *Quality:* ${data.data.downloads[0].quality || 'Best'}\n⏱ *Duration:* ${data.data.duration || 'N/A'}\n\n> *IT'S ERFAN AHMAD*`
         }, { quoted: mek });
 
         // Success reaction
