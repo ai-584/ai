@@ -1,4 +1,4 @@
-// ERFAN-MD
+// ERFAN-MD - Facebook Downloader
 import { fileURLToPath } from 'url';
 import path from 'path';
 import { cmd } from '../command.js';
@@ -6,8 +6,6 @@ import axios from 'axios';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
-// ERFAN-MD
 
 cmd({
     pattern: "facebook",
@@ -30,20 +28,20 @@ async (conn, mek, m, { from, q, reply, react }) => {
         // React loading
         await react("⬇️");
 
-        // New ShadowCore API URL
-        const apiUrl = `https://api--shadowcorexyz.replit.app/download/facebook?url=${encodeURIComponent(q)}`;
+        // ✅ NEW LexCode API URL
+        const apiUrl = `https://api.lexcode.biz.id/api/dwn/facebook?url=${encodeURIComponent(q)}`;
 
         // Fetch API Data
-        const { data } = await axios.get(apiUrl);
+        const { data } = await axios.get(apiUrl, { timeout: 30000 });
 
-        // Validate response
-        if (!data || !data.status || !data.downloads || !data.downloads.all || !data.downloads.all.length) {
+        // ✅ Validate response (New Structure)
+        if (!data || !data.success || !data.result || !data.result.downloads || !data.result.downloads.length) {
             await react("❌");
             return reply("❌ Failed to fetch Facebook video. Try another link.");
         }
 
-        // Get the Best quality video from 'all' array
-        const media = data.downloads.all[0];
+        // ✅ Get the first download URL
+        const media = data.result.downloads[0];
 
         // Validate media URL
         if (!media.url) {
@@ -51,15 +49,7 @@ async (conn, mek, m, { from, q, reply, react }) => {
             return reply("❌ Video download URL not found.");
         }
 
-        // Send info message
-        await reply(
-            `📘 *FACEBOOK DOWNLOADER*\n\n` +
-            `🎬 *Title:* ${data.metadata?.title || 'Facebook Video'}\n` +
-            `📹 *Quality:* ${media.quality || 'Best'}\n` +
-            `🖼 *Thumbnail:* ${data.metadata?.thumbnail ? 'Available' : 'Not Found'}\n` +
-            `📊 *Total Results:* ${data.total || 1}\n\n` +
-            `📥 Downloading video... Please wait.`
-        );
+        
 
         // Download media buffer
         const response = await axios.get(media.url, {
@@ -73,7 +63,7 @@ async (conn, mek, m, { from, q, reply, react }) => {
         await conn.sendMessage(from, {
             video: Buffer.from(response.data),
             mimetype: 'video/mp4',
-            caption: `✅ *Video Downloaded Successfully!*\n\n📹 *Quality:* ${media.quality}\n🎬 *Title:* ${data.metadata?.title || 'Facebook Video'}\n\n> *IT'S ERFAN AHMAD*`
+            caption: `✅ *Video Downloaded Successfully!*\n\n📹 *Quality:* ${media.quality || 'Best'}\n\n> *IT'S ERFAN AHMAD*`
         }, { quoted: mek });
 
         // Success reaction
