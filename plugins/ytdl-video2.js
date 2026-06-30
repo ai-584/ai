@@ -1,4 +1,3 @@
-
 import { fileURLToPath } from 'url';
 import axios from 'axios';
 import yts from 'yt-search';
@@ -7,7 +6,7 @@ import { cmd } from '../command.js';
 const __filename = fileURLToPath(import.meta.url);
 
 // ──────────────────────────────────────────────────────────────
-// 🎬 VIDEO COMMAND (5-API Auto Fallback Chain)
+// 🎬 VIDEO COMMAND (CONCURRENT FETCHING - FAST!)
 // ──────────────────────────────────────────────────────────────
 cmd({
     pattern: "ytv",
@@ -32,7 +31,7 @@ cmd({
             if (!videoId) return await reply("❌ Invalid YouTube URL!");
             const searchFromUrl = await yts({ videoId });
             videoInfo = searchFromUrl;
-            url = q; 
+            url = q;
         } else {
             const search = await yts(q);
             videoInfo = search.videos[0];
@@ -45,13 +44,20 @@ cmd({
             return match ? match[1] : null;
         }
 
-        // ── Send initial info with Title & Description ──
+        // ── Clean the description to remove all links (Shopify, Spotify, etc.) ──
+        function cleanDescription(text) {
+            if (!text) return 'N/A';
+            // Remove all URLs from the text
+            return text.replace(/https?:\/\/[^\s]+/g, '').trim() || 'N/A';
+        }
+
+        // ── Send initial info with cleaned description ──
         const caption = `*🎬 VIDEO DOWNLOADER*\n\n` +
                         `📌 *Title:* ${videoInfo.title || 'Unknown'}\n` +
-                        `📝 *Description:* ${videoInfo.description ? videoInfo.description.substring(0, 120) + '...' : 'N/A'}\n` +
+                        `📝 *Description:* ${cleanDescription(videoInfo.description)}\n` +
                         `📺 *Channel:* ${videoInfo.author?.name || 'Unknown'}\n` +
                         `🕒 *Duration:* ${videoInfo.timestamp || 'N/A'}\n` +
-                        `⏳ *Status:* Fetching download link...\n\n` +
+                        `⏳ *Status:* Fetching download link (Fast mode)...\n\n` +
                         `*© Powered by ERFAN-MD*`;
 
         await conn.sendMessage(from, {
@@ -59,94 +65,69 @@ cmd({
             caption
         }, { quoted: mek });
 
-        // ── Fallback API Chain ──
-        let downloadUrl = null;
-        let usedApi = '';
+        // ── CONCURRENT API FETCHING (ALL APIs run at the same time) ──
+        const fetchPromises = [];
 
         // 1️⃣ Faa API
-        if (!downloadUrl) {
-            try {
-                const apiUrl = `https://api-faa.my.id/faa/ytmp4?url=${encodeURIComponent(url)}`;
-                const res = await axios.get(apiUrl, { timeout: 30000 });
-                if (res.data?.status && res.data?.result?.download_url) {
-                    downloadUrl = res.data.result.download_url;
-                    usedApi = 'Faa';
-                    console.log('✅ Faa API success');
-                }
-            } catch (e) {
-                console.log('❌ Faa API failed:', e.message);
+        fetchPromises.push((async () => {
+            const res = await axios.get(`https://api-faa.my.id/faa/ytmp4?url=${encodeURIComponent(url)}`, { timeout: 15000 });
+            if (res.data?.status && res.data?.result?.download_url) {
+                return { downloadUrl: res.data.result.download_url, usedApi: 'Faa' };
             }
-        }
+            throw new Error('Faa failed');
+        })());
 
         // 2️⃣ Xemoz API
-        if (!downloadUrl) {
-            try {
-                const apiUrl = `https://api-xemoz-official.my.id/api/donwloader/ytmp4.php?url=${encodeURIComponent(url)}`;
-                const res = await axios.get(apiUrl, { timeout: 30000 });
-                if (res.data?.status && res.data?.result?.download) {
-                    downloadUrl = res.data.result.download;
-                    usedApi = 'Xemoz';
-                    console.log('✅ Xemoz API success');
-                }
-            } catch (e) {
-                console.log('❌ Xemoz API failed:', e.message);
+        fetchPromises.push((async () => {
+            const res = await axios.get(`https://api-xemoz-official.my.id/api/donwloader/ytmp4.php?url=${encodeURIComponent(url)}`, { timeout: 15000 });
+            if (res.data?.status && res.data?.result?.download) {
+                return { downloadUrl: res.data.result.download, usedApi: 'Xemoz' };
             }
-        }
+            throw new Error('Xemoz failed');
+        })());
 
         // 3️⃣ Ryzumi API
-        if (!downloadUrl) {
-            try {
-                const apiUrl = `https://api.ryzumi.net/api/downloader/ytmp4?url=${encodeURIComponent(url)}&quality=360`;
-                const res = await axios.get(apiUrl, { timeout: 30000 });
-                if (res.data?.url) {
-                    downloadUrl = res.data.url;
-                    usedApi = 'Ryzumi';
-                    console.log('✅ Ryzumi API success');
-                }
-            } catch (e) {
-                console.log('❌ Ryzumi API failed:', e.message);
+        fetchPromises.push((async () => {
+            const res = await axios.get(`https://api.ryzumi.net/api/downloader/ytmp4?url=${encodeURIComponent(url)}&quality=360`, { timeout: 15000 });
+            if (res.data?.url) {
+                return { downloadUrl: res.data.url, usedApi: 'Ryzumi' };
             }
-        }
+            throw new Error('Ryzumi failed');
+        })());
 
         // 4️⃣ Delirius API
-        if (!downloadUrl) {
-            try {
-                const apiUrl = `https://api.delirius.store/download/ytmp4?url=${encodeURIComponent(url)}&format=360p`;
-                const res = await axios.get(apiUrl, { timeout: 30000 });
-                if (res.data?.status && res.data?.data?.download) {
-                    downloadUrl = res.data.data.download;
-                    usedApi = 'Delirius';
-                    console.log('✅ Delirius API success');
-                }
-            } catch (e) {
-                console.log('❌ Delirius API failed:', e.message);
+        fetchPromises.push((async () => {
+            const res = await axios.get(`https://api.delirius.store/download/ytmp4?url=${encodeURIComponent(url)}&format=360p`, { timeout: 15000 });
+            if (res.data?.status && res.data?.data?.download) {
+                return { downloadUrl: res.data.data.download, usedApi: 'Delirius' };
             }
-        }
+            throw new Error('Delirius failed');
+        })());
 
         // 5️⃣ Nanzz API (Extracts 360p video)
-        if (!downloadUrl) {
-            try {
-                const apiUrl = `https://api-nanzz.my.id/docs/api/downloader/ytdl.php?url=${encodeURIComponent(url)}`;
-                const res = await axios.get(apiUrl, { timeout: 30000 });
-                if (res.data?.status && res.data?.result?.video_formats) {
-                    const formats = res.data.result.video_formats;
-                    let selected = formats.find(f => f.quality === '360P') || formats.find(f => f.quality === '720P') || formats[0];
-                    if (selected && selected.download_url) {
-                        downloadUrl = selected.download_url;
-                        usedApi = 'Nanzz (360p)';
-                        console.log('✅ Nanzz API success');
-                    }
+        fetchPromises.push((async () => {
+            const res = await axios.get(`https://api-nanzz.my.id/docs/api/downloader/ytdl.php?url=${encodeURIComponent(url)}`, { timeout: 15000 });
+            if (res.data?.status && res.data?.result?.video_formats) {
+                const formats = res.data.result.video_formats;
+                let selected = formats.find(f => f.quality === '360P') || formats.find(f => f.quality === '720P') || formats[0];
+                if (selected && selected.download_url) {
+                    return { downloadUrl: selected.download_url, usedApi: 'Nanzz' };
                 }
-            } catch (e) {
-                console.log('❌ Nanzz API failed:', e.message);
             }
+            throw new Error('Nanzz failed');
+        })());
+
+        // ── Wait for the fastest successful API ──
+        let result;
+        try {
+            result = await Promise.any(fetchPromises);
+        } catch (e) {
+            console.error('All APIs failed:', e);
+            await conn.sendMessage(from, { react: { text: '❌', key: m.key } });
+            return await reply("❌ All 5 APIs failed instantly! Please try again later.");
         }
 
-        // ── If all APIs fail ──
-        if (!downloadUrl) {
-            await conn.sendMessage(from, { react: { text: '❌', key: m.key } });
-            return await reply("❌ All 5 APIs failed! Please try again later.");
-        }
+        const { downloadUrl, usedApi } = result;
 
         // ── Download and send the video ──
         try {
