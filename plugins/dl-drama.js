@@ -29,7 +29,7 @@ cmd({
         let url = q;
         let videoInfo = null;
 
-        // Detect URL or title
+        // ── Detect URL or title ──
         if (q.startsWith('http://') || q.startsWith('https://')) {
             if (!q.includes("youtube.com") && !q.includes("youtu.be"))
                 return await reply("❌ Please provide a valid YouTube drama URL!");
@@ -37,6 +37,7 @@ cmd({
             if (!videoId) return await reply("❌ Invalid YouTube URL!");
             const searchFromUrl = await yts({ videoId: videoId });
             videoInfo = searchFromUrl;
+            url = q; // keep original URL
         } else {
             const search = await yts(q + " drama full episode");
             if (!search.videos || search.videos.length === 0)
@@ -50,7 +51,7 @@ cmd({
             return match ? match[1] : null;
         }
 
-        // Send fancy preview
+        // ── Send fancy preview ──
         await conn.sendMessage(from, {
             image: { url: videoInfo.thumbnail },
             caption: `
@@ -60,55 +61,99 @@ cmd({
 
 📺 *Title:* ${videoInfo.title}
 🕒 *Duration:* ${videoInfo.timestamp}
-👁️ *Views:* ${videoInfo.views.toLocaleString()}
+👁️ *Views:* ${videoInfo.views ? videoInfo.views.toLocaleString() : 'N/A'}
 🔗 *Source:* YouTube
 
 ⏳ _Fetching download link..._
             `
         }, { quoted: mek });
 
-        // Download via API
-        const api = `https://jawad-tech.vercel.app/download/ytdl?url=${encodeURIComponent(url)}`;
-        const res = await axios.get(api);
-        const data = res.data;
+        // ── Sequential API attempts (same as ytv) ──
+        let downloadUrl = null;
+        let usedApi = '';
 
-        // Smart Check: Look for the new format, then old format, then any available video link
-        let downloadLink = data?.result?.download_url || data?.result?.mp4 || data?.result?.download;
-        
-        // Fallback: If the result is an object with multiple qualities, pick the best one
-        if (!downloadLink && data?.result) {
-            const qualities = ['720', '480', '360'];
-            for (let q of qualities) {
-                if (data.result[q]) {
-                    downloadLink = data.result[q];
+        const apis = [
+            { name: 'Faa', fn: async () => {
+                const res = await axios.get(`https://api-faa.my.id/faa/ytmp4?url=${encodeURIComponent(url)}`, { timeout: 15000 });
+                if (res.data?.status && res.data?.result?.download_url) return res.data.result.download_url;
+                throw new Error('Faa failed');
+            }},
+            { name: 'Xemoz', fn: async () => {
+                const res = await axios.get(`https://api-xemoz-official.my.id/api/donwloader/ytmp4.php?url=${encodeURIComponent(url)}`, { timeout: 15000 });
+                if (res.data?.status && res.data?.result?.download) return res.data.result.download;
+                throw new Error('Xemoz failed');
+            }},
+            { name: 'Ryzumi', fn: async () => {
+                const res = await axios.get(`https://api.ryzumi.net/api/downloader/ytmp4?url=${encodeURIComponent(url)}&quality=360`, { timeout: 15000 });
+                if (res.data?.url) return res.data.url;
+                throw new Error('Ryzumi failed');
+            }},
+            { name: 'Delirius', fn: async () => {
+                const res = await axios.get(`https://api.delirius.store/download/ytmp4?url=${encodeURIComponent(url)}&format=360p`, { timeout: 15000 });
+                if (res.data?.status && res.data?.data?.download) return res.data.data.download;
+                throw new Error('Delirius failed');
+            }},
+            { name: 'Nanzz', fn: async () => {
+                const res = await axios.get(`https://api-nanzz.my.id/docs/api/downloader/ytdl.php?url=${encodeURIComponent(url)}`, { timeout: 15000 });
+                if (res.data?.status && res.data?.result?.video_formats) {
+                    const formats = res.data.result.video_formats;
+                    let selected = formats.find(f => f.quality === '360P') || formats.find(f => f.quality === '720P') || formats[0];
+                    if (selected && selected.download_url) return selected.download_url;
+                }
+                throw new Error('Nanzz failed');
+            }}
+        ];
+
+        for (const api of apis) {
+            try {
+                console.log(`[DRAMA] Trying ${api.name}...`);
+                const url = await api.fn();
+                if (url) {
+                    downloadUrl = url;
+                    usedApi = api.name;
+                    console.log(`[DRAMA] ✅ ${api.name} succeeded!`);
                     break;
                 }
+            } catch (e) {
+                console.log(`[DRAMA] ❌ ${api.name} failed:`, e.message);
             }
         }
 
-        if (!downloadLink) {
-            // Log the exact API response in your console so you can see what it's actually returning
-            console.log("API RESPONSE ERROR:", JSON.stringify(data, null, 2));
-            return await reply("⚠️ Could not get the drama file. The API might be down or the video is restricted.");
+        if (!downloadUrl) {
+            await conn.sendMessage(from, { react: { text: '❌', key: m.key } });
+            return await reply("❌ All 5 APIs failed! Please try again later.");
         }
 
-        const title = data?.result?.title || videoInfo.title;
+        // ── Download and send video ──
+        try {
+            const videoBuffer = await axios.get(downloadUrl, {
+                responseType: 'arraybuffer',
+                timeout: 120000,
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                }
+            });
 
-        // Send as a video
-        await conn.sendMessage(from, {
-            video: { url: downloadLink },
-            mimetype: 'video/mp4',
-            caption: `
-✨ *${title}*  
+            await conn.sendMessage(from, {
+                video: Buffer.from(videoBuffer.data),
+                mimetype: 'video/mp4',
+                caption: `
+✨ *${videoInfo.title}*  
 🎬 Your requested drama is ready!
 
+📥 Downloaded via: ${usedApi}
 🖤 *Enjoy Watching With*  
 『🔥 DARK ZONE MD 🔥』
-            `
-        }, { quoted: mek });
+                `
+            }, { quoted: mek });
 
-        // Success react
-        await conn.sendMessage(from, { react: { text: '✅', key: m.key } });
+            await conn.sendMessage(from, { react: { text: '✅', key: m.key } });
+
+        } catch (dlErr) {
+            console.error('[DRAMA] Download error:', dlErr.message);
+            await reply("❌ Failed to download drama video. Try again later.");
+            await conn.sendMessage(from, { react: { text: '❌', key: m.key } });
+        }
 
     } catch (err) {
         console.error("❌ Error in .drama command:", err);
