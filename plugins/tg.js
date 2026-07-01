@@ -3,15 +3,22 @@ import { fileURLToPath } from 'url';
 import path from 'path';
 import { cmd } from '../command.js';
 import axios from 'axios';
-import stickerMaker from './sticker-maker.js'; // Import your existing sticker maker
+import fs from 'fs';
+import { tmpdir } from 'os';
+import crypto from 'crypto';
+import ffmpegPath from '@ffmpeg-installer/ffmpeg';
+import ffmpeg from 'fluent-ffmpeg';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Set ffmpeg path
+ffmpeg.setFfmpegPath(ffmpegPath.path);
+
 cmd({
     pattern: "tgsticker",
-    alias: ["tgstickers", "telegramsticker", "tg"],
-    desc: "Download stickers from Telegram sticker pack and convert to WebP",
+    alias: ["tgstickers", "telegramsticker", "tgs"],
+    desc: "Download stickers from Telegram sticker pack",
     category: "download",
     react: "🎨",
     filename: __filename
@@ -25,15 +32,13 @@ cmd({
 
 💡 Example:
 .tgsticker https://t.me/addstickers/pa_Xshg5mbrcZBfQGwbOSgp_by_SigStick10Bot
-
-📊 Downloads all stickers and converts them to WhatsApp stickers!
 `);
         }
 
         // Validate URL
         let url = q.trim();
         if (!url.includes('t.me/addstickers/')) {
-            return await reply("❌ Invalid URL! Please provide a valid Telegram sticker pack URL.\n\n💡 Example: https://t.me/addstickers/pa_Xshg5mbrcZBfQGwbOSgp_by_SigStick10Bot");
+            return await reply("❌ Invalid URL! Please provide a valid Telegram sticker pack URL.");
         }
 
         // Show loading
@@ -53,41 +58,32 @@ cmd({
             }
         });
 
-        console.log(`[TGSTICKER] Response status: ${response.status}`);
-
         const data = response.data;
 
-        // Check if response is valid
         if (!data || !data.status) {
-            console.log('[TGSTICKER] Invalid response:', data);
-            return await reply("❌ Failed to fetch sticker pack. The API might be down or the sticker pack is invalid.\n\n💡 Make sure the URL is correct and try again.");
+            return await reply("❌ Failed to fetch sticker pack. Please try again.");
         }
 
         const result = data.result;
         if (!result || !result.sticker || !Array.isArray(result.sticker) || result.sticker.length === 0) {
-            return await reply("❌ No stickers found in this pack. Try another one.");
+            return await reply("❌ No stickers found in this pack.");
         }
 
         // ── Send sticker pack info ──
         const stickerCount = result.sticker.length;
-        let infoMessage = `
+        await conn.sendMessage(from, {
+            text: `
 🎨 *TELEGRAM STICKER PACK*
 ━━━━━━━━━━━━━━━━━━
 
 📌 *Name:* ${result.name || 'N/A'}
 📝 *Title:* ${result.title || 'N/A'}
-📊 *Type:* ${result.sticker_type || 'regular'}
 📦 *Total Stickers:* ${stickerCount}
 
-⏳ *Downloading & converting stickers...*
-(Converting to WhatsApp WebP format)
-
+⏳ Downloading ${stickerCount} stickers...
 ━━━━━━━━━━━━━━━━━━
 *© Powered by ERFAN-MD*
-`;
-
-        await conn.sendMessage(from, {
-            text: infoMessage
+`
         }, { quoted: mek });
 
         // ── Process each sticker ──
@@ -98,12 +94,11 @@ cmd({
             const sticker = result.sticker[i];
             const emoji = sticker.emoji || '😊';
             const stickerUrl = sticker.url;
-            const isAnimated = sticker.is_animated || false;
 
             try {
-                console.log(`[TGSTICKER] Processing sticker ${i + 1}/${stickerCount}: ${stickerUrl}`);
+                console.log(`[TGSTICKER] Processing ${i + 1}/${stickerCount}: ${stickerUrl}`);
 
-                // Download the sticker file
+                // Download the sticker
                 const fileBuffer = await axios.get(stickerUrl, {
                     responseType: 'arraybuffer',
                     timeout: 30000,
@@ -112,91 +107,60 @@ cmd({
                     }
                 });
 
-                let stickerBuffer = null;
-                let isWebm = false;
+                let stickerBuffer = Buffer.from(fileBuffer.data);
 
-                // Check file type from URL or content
-                const urlLower = stickerUrl.toLowerCase();
-                if (urlLower.endsWith('.webm') || urlLower.includes('.webm')) {
-                    isWebm = true;
-                    console.log(`[TGSTICKER] ⚠️ WebM file detected, converting to WebP...`);
-                }
+                // ── Check if it's WebM (animated sticker) ──
+                const isWebm = stickerUrl.toLowerCase().includes('.webm');
 
-                // ── Convert to WebP using sticker-maker ──
-                try {
-                    if (isWebm) {
-                        // Convert WebM video to WebP sticker
-                        stickerBuffer = await stickerMaker.videoToWebp(Buffer.from(fileBuffer.data));
-                        console.log(`[TGSTICKER] ✅ Converted WebM to WebP`);
-                    } else if (stickerUrl.endsWith('.gif') || stickerUrl.includes('.gif')) {
-                        // Convert GIF to WebP sticker
-                        stickerBuffer = await stickerMaker.gifToSticker(Buffer.from(fileBuffer.data));
-                        console.log(`[TGSTICKER] ✅ Converted GIF to WebP`);
-                    } else {
-                        // For PNG/JPG - send as image or convert to sticker
-                        stickerBuffer = Buffer.from(fileBuffer.data);
-                        console.log(`[TGSTICKER] ✅ Using image as is`);
-                    }
-                } catch (convertErr) {
-                    console.log(`[TGSTICKER] ❌ Conversion failed, trying to send as image/video:`, convertErr.message);
-                    // If conversion fails, try to send as image/video directly
-                    if (isWebm) {
-                        // Send as video with warning
+                if (isWebm) {
+                    console.log(`[TGSTICKER] ⚠️ WebM detected, converting to WebP...`);
+                    
+                    try {
+                        // Convert WebM to WebP using ffmpeg directly
+                        stickerBuffer = await convertWebmToWebp(Buffer.from(fileBuffer.data));
+                        console.log(`[TGSTICKER] ✅ Converted to WebP`);
+                    } catch (convertErr) {
+                        console.log(`[TGSTICKER] ❌ Conversion failed:`, convertErr.message);
+                        // If conversion fails, send as video with warning
                         await conn.sendMessage(from, {
                             video: Buffer.from(fileBuffer.data),
-                            caption: `⚠️ Sticker ${i + 1}/${stickerCount} ${emoji}\n(WebM format - may not play on all devices)`
-                        }, { quoted: mek });
-                        successCount++;
-                        continue;
-                    } else {
-                        // Send as image
-                        await conn.sendMessage(from, {
-                            image: Buffer.from(fileBuffer.data),
-                            caption: `🎨 Sticker ${i + 1}/${stickerCount} ${emoji}`
+                            caption: `⚠️ Sticker ${i + 1}/${stickerCount} ${emoji}\n(WebM format)`
                         }, { quoted: mek });
                         successCount++;
                         continue;
                     }
                 }
 
-                // ── Send as WhatsApp Sticker ──
-                if (stickerBuffer) {
-                    await conn.sendMessage(from, {
-                        sticker: stickerBuffer
-                    }, { quoted: mek });
+                // ── Send as sticker ──
+                await conn.sendMessage(from, {
+                    sticker: stickerBuffer
+                }, { quoted: mek });
 
-                    successCount++;
-                    console.log(`[TGSTICKER] ✅ Sticker ${i + 1} sent successfully`);
-                } else {
-                    failCount++;
-                    console.log(`[TGSTICKER] ❌ Sticker ${i + 1} failed - no buffer`);
-                }
+                successCount++;
+                console.log(`[TGSTICKER] ✅ Sticker ${i + 1} sent`);
 
-                // Small delay to avoid rate limiting
-                await new Promise(resolve => setTimeout(resolve, 500));
+                // Small delay
+                await new Promise(resolve => setTimeout(resolve, 300));
 
             } catch (err) {
                 failCount++;
-                console.log(`[TGSTICKER] ❌ Failed to process sticker ${i + 1}:`, err.message);
-                // Try next sticker
+                console.log(`[TGSTICKER] ❌ Sticker ${i + 1} failed:`, err.message);
             }
         }
 
         // ── Final summary ──
-        let summaryMessage = `
+        await conn.sendMessage(from, {
+            text: `
 🎨 *STICKER DOWNLOAD COMPLETE*
 ━━━━━━━━━━━━━━━━━━
 
 📌 *Pack:* ${result.title || result.name || 'N/A'}
-✅ *Successfully sent:* ${successCount} stickers
+✅ *Sent:* ${successCount} stickers
 ❌ *Failed:* ${failCount} stickers
 
 ━━━━━━━━━━━━━━━━━━
 *© Powered by ERFAN-MD*
-`;
-
-        await conn.sendMessage(from, {
-            text: summaryMessage
+`
         }, { quoted: mek });
 
         await conn.sendMessage(from, {
@@ -204,18 +168,52 @@ cmd({
         });
 
     } catch (err) {
-        console.error("❌ Error in .tgsticker command:", err);
-        
-        if (err.code === 'ECONNABORTED') {
-            await reply("❌ Request timed out! The sticker pack might be too large.\n\n💡 Try again later or use a smaller sticker pack.");
-        } else if (err.response) {
-            await reply(`❌ API Error: ${err.response.status}\n\n💡 The Telegram sticker API might be down. Try again later.`);
-        } else {
-            await reply(`❌ Error: ${err.message || 'Something went wrong!'}`);
-        }
-        
+        console.error("❌ Error in .tgsticker:", err);
+        await reply(`❌ Error: ${err.message || 'Something went wrong!'}`);
         await conn.sendMessage(from, {
             react: { text: '❌', key: m.key }
         });
     }
 });
+
+// ── Helper: Convert WebM to WebP using ffmpeg ──
+async function convertWebmToWebp(videoBuffer) {
+    const inputPath = path.join(tmpdir(), crypto.randomBytes(6).toString('hex') + '.webm');
+    const outputPath = path.join(tmpdir(), crypto.randomBytes(6).toString('hex') + '.webp');
+
+    try {
+        // Write input file
+        fs.writeFileSync(inputPath, videoBuffer);
+
+        // Convert using ffmpeg
+        await new Promise((resolve, reject) => {
+            ffmpeg(inputPath)
+                .on('error', reject)
+                .on('end', resolve)
+                .addOutputOptions([
+                    '-vcodec', 'libwebp',
+                    '-vf', "scale='min(320,iw)':min'(320,ih)':force_original_aspect_ratio=decrease,fps=15,pad=320:320:-1:-1:color=white@0.0,split [a][b];[a] palettegen=reserve_transparent=on:transparency_color=ffffff [p];[b][p] paletteuse",
+                    '-loop', '0',
+                    '-preset', 'default',
+                    '-an',
+                    '-vsync', '0'
+                ])
+                .toFormat('webp')
+                .save(outputPath);
+        });
+
+        // Read output
+        const webpBuffer = fs.readFileSync(outputPath);
+        
+        // Cleanup
+        fs.unlinkSync(inputPath);
+        fs.unlinkSync(outputPath);
+        
+        return webpBuffer;
+    } catch (err) {
+        // Cleanup on error
+        try { fs.unlinkSync(inputPath); } catch (e) {}
+        try { fs.unlinkSync(outputPath); } catch (e) {}
+        throw err;
+    }
+}
