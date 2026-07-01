@@ -6,11 +6,11 @@ import { cmd } from '../command.js';
 const __filename = fileURLToPath(import.meta.url);
 
 // ──────────────────────────────────────────────────────────────
-// 🎬 VIDEO COMMAND (Fixed Search + Better API Handling)
+// 🎬 VIDEO COMMAND (Fixed for Long Videos + Nanzz Removed)
 // ──────────────────────────────────────────────────────────────
 cmd({
     pattern: "video",
-    alias: ["ytv", "ytmp4", "vn"],
+    alias: ["ytv", "ytmp4", "vz"],
     desc: "Download YouTube video (MP4) with auto fallback",
     category: "download",
     react: "📹",
@@ -22,8 +22,9 @@ cmd({
         let url = q;
         let videoInfo = null;
         let videoId = null;
+        let isLongVideo = false;
 
-        // ── Search or extract URL (IMPROVED) ──
+        // ── Search or extract URL ──
         if (q.startsWith('http://') || q.startsWith('https://')) {
             if (!q.includes("youtube.com") && !q.includes("youtu.be")) {
                 return await reply("❌ Please provide a valid YouTube URL!");
@@ -35,44 +36,32 @@ cmd({
                 const searchFromUrl = await yts({ videoId });
                 videoInfo = searchFromUrl;
             } catch (searchErr) {
-                // If yts fails, try direct URL fetch
                 console.log('[VIDEO] yts failed, using URL directly:', searchErr.message);
                 videoInfo = { 
                     title: q,
                     thumbnail: `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
                     author: { name: 'YouTube' },
                     timestamp: 'N/A',
-                    description: 'N/A'
+                    description: 'N/A',
+                    duration: 0
                 };
             }
             url = q;
         } else {
-            // Try search with multiple attempts
             let searchQuery = q;
             let searchResults = null;
             
-            // Try original query
             try {
                 searchResults = await yts(searchQuery);
             } catch (e) {
-                console.log('[VIDEO] Search failed, trying with modified query:', e.message);
+                console.log('[VIDEO] Search failed:', e.message);
             }
             
-            // If no results, try with "video" suffix
             if (!searchResults || !searchResults.videos || searchResults.videos.length === 0) {
                 try {
                     searchResults = await yts(q + " video");
                 } catch (e) {
                     console.log('[VIDEO] Second search failed:', e.message);
-                }
-            }
-            
-            // If still no results, try with "song" suffix
-            if (!searchResults || !searchResults.videos || searchResults.videos.length === 0) {
-                try {
-                    searchResults = await yts(q + " song");
-                } catch (e) {
-                    console.log('[VIDEO] Third search failed:', e.message);
                 }
             }
             
@@ -90,18 +79,39 @@ cmd({
             return match ? match[1] : null;
         }
 
-        // ── Clean description (remove all links) ──
+        // ── Check if video is long (> 15 minutes) ──
+        const durationSeconds = videoInfo.duration || 0;
+        const durationMinutes = Math.floor(durationSeconds / 60);
+        if (durationMinutes > 15) {
+            isLongVideo = true;
+            console.log(`[VIDEO] Long video detected: ${durationMinutes} minutes`);
+        }
+
+        // ── Clean description ──
         function cleanDescription(text) {
             if (!text) return 'N/A';
             return text.replace(/https?:\/\/[^\s]+/g, '').trim() || 'N/A';
         }
 
+        // ── Format duration ──
+        function formatDuration(seconds) {
+            if (!seconds) return 'N/A';
+            const hrs = Math.floor(seconds / 3600);
+            const mins = Math.floor((seconds % 3600) / 60);
+            const secs = seconds % 60;
+            if (hrs > 0) return `${hrs}h ${mins}m ${secs}s`;
+            if (mins > 0) return `${mins}m ${secs}s`;
+            return `${secs}s`;
+        }
+
         // ── Send initial info ──
+        const durationDisplay = formatDuration(durationSeconds);
         const caption = `*🎬 VIDEO DOWNLOADER*\n\n` +
                         `📌 *Title:* ${videoInfo.title || 'Unknown'}\n` +
                         `📝 *Description:* ${cleanDescription(videoInfo.description)}\n` +
                         `📺 *Channel:* ${videoInfo.author?.name || 'Unknown'}\n` +
-                        `🕒 *Duration:* ${videoInfo.timestamp || 'N/A'}\n` +
+                        `🕒 *Duration:* ${durationDisplay}\n` +
+                        `${isLongVideo ? '⚠️ *Long video detected (>15 min)*\n' : ''}` +
                         `⏳ *Status:* Fetching download link...\n\n` +
                         `*© Powered by ERFAN-MD*`;
 
@@ -110,153 +120,154 @@ cmd({
             caption
         }, { quoted: mek });
 
-        // ── Prepare URL for APIs (properly encoded) ──
+        // ── API Priority List (Nanzz REMOVED - unreliable for long videos) ──
         const encodedUrl = encodeURIComponent(url);
         let downloadUrl = null;
         let usedApi = '';
 
-        // ── API Priority List (with better error handling) ──
+        // Only use APIs that can handle long videos
         const apis = [
-            { 
-                name: 'Faa', 
-                fn: async () => {
-                    const res = await axios.get(`https://api-faa.my.id/faa/ytmp4?url=${encodedUrl}`, { 
-                        timeout: 20000,
-                        headers: { 'User-Agent': 'Mozilla/5.0' }
-                    });
-                    if (res.data?.status && res.data?.result?.download_url) {
-                        return res.data.result.download_url;
-                    }
-                    throw new Error('Faa failed: ' + JSON.stringify(res.data));
-                }
-            },
             { 
                 name: 'Delirius', 
                 fn: async () => {
                     const res = await axios.get(`https://api.delirius.store/download/ytmp4?url=${encodedUrl}&format=360p`, { 
-                        timeout: 20000,
+                        timeout: 30000,
                         headers: { 'User-Agent': 'Mozilla/5.0' }
                     });
                     if (res.data?.status && res.data?.data?.download) {
                         return res.data.data.download;
                     }
-                    throw new Error('Delirius failed: ' + JSON.stringify(res.data));
+                    throw new Error('Delirius failed');
+                }
+            },
+            { 
+                name: 'Faa', 
+                fn: async () => {
+                    const res = await axios.get(`https://api-faa.my.id/faa/ytmp4?url=${encodedUrl}`, { 
+                        timeout: 30000,
+                        headers: { 'User-Agent': 'Mozilla/5.0' }
+                    });
+                    if (res.data?.status && res.data?.result?.download_url) {
+                        return res.data.result.download_url;
+                    }
+                    throw new Error('Faa failed');
                 }
             },
             { 
                 name: 'Ryzumi', 
                 fn: async () => {
                     const res = await axios.get(`https://api.ryzumi.net/api/downloader/ytmp4?url=${encodedUrl}&quality=360`, { 
-                        timeout: 20000,
+                        timeout: 30000,
                         headers: { 'User-Agent': 'Mozilla/5.0' }
                     });
                     if (res.data?.url) {
                         return res.data.url;
                     }
-                    throw new Error('Ryzumi failed: ' + JSON.stringify(res.data));
-                }
-            },
-            { 
-                name: 'Nanzz', 
-                fn: async () => {
-                    const res = await axios.get(`https://api-nanzz.my.id/docs/api/downloader/ytdl.php?url=${encodedUrl}`, { 
-                        timeout: 20000,
-                        headers: { 'User-Agent': 'Mozilla/5.0' }
-                    });
-                    if (res.data?.status && res.data?.result?.video_formats) {
-                        const formats = res.data.result.video_formats;
-                        let selected = formats.find(f => f.quality === '360P') || 
-                                      formats.find(f => f.quality === '720P') || 
-                                      formats[0];
-                        if (selected && selected.download_url) {
-                            return selected.download_url;
-                        }
-                    }
-                    throw new Error('Nanzz failed: ' + JSON.stringify(res.data));
+                    throw new Error('Ryzumi failed');
                 }
             }
         ];
 
-        // ── Try each API with retry ──
+        // ── Try each API ──
         for (const api of apis) {
             try {
                 console.log(`[VIDEO] Trying ${api.name}...`);
                 const link = await api.fn();
                 
                 if (link) {
-                    // Verify the link works (check file size)
-                    try {
-                        const headCheck = await axios.head(link, { 
-                            timeout: 10000,
-                            headers: { 'User-Agent': 'Mozilla/5.0' }
-                        });
-                        const contentLength = headCheck.headers['content-length'];
-                        
-                        if (contentLength && parseInt(contentLength) > 100000) { // > 100KB = valid
-                            downloadUrl = link;
-                            usedApi = api.name;
-                            console.log(`[VIDEO] ✅ ${api.name} succeeded! (${contentLength} bytes)`);
-                            break;
-                        } else {
-                            console.log(`[VIDEO] ⚠️ ${api.name} file too small (${contentLength || 'unknown'} bytes)`);
-                            // Still try to download, maybe it works
-                            downloadUrl = link;
-                            usedApi = api.name;
-                            break;
-                        }
-                    } catch (headErr) {
-                        console.log(`[VIDEO] ⚠️ ${api.name} head request failed, but trying download anyway`);
-                        downloadUrl = link;
-                        usedApi = api.name;
-                        break;
-                    }
+                    downloadUrl = link;
+                    usedApi = api.name;
+                    console.log(`[VIDEO] ✅ ${api.name} returned a link`);
+                    break;
                 }
             } catch (e) {
                 console.log(`[VIDEO] ❌ ${api.name} failed:`, e.message);
-                // Wait 1 second before next API
-                await new Promise(resolve => setTimeout(resolve, 1000));
+                await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds
             }
         }
 
         if (!downloadUrl) {
             await conn.sendMessage(from, { react: { text: '❌', key: m.key } });
-            return await reply("❌ All APIs failed! Please try again later.\n\n💡 Try using a direct YouTube URL instead.");
+            return await reply("❌ All APIs failed! Please try again later.\n\n💡 For long videos, try using a direct YouTube URL.");
         }
 
-        // ── Download and send the video ──
+        // ── Download video with streaming support ──
         try {
-            console.log(`[VIDEO] Downloading from ${usedApi}...`);
+            console.log(`[VIDEO] Downloading from ${usedApi}... (This may take a while for long videos)`);
+            
+            // Increase timeout for long videos
+            const downloadTimeout = isLongVideo ? 600000 : 180000; // 10 min for long, 3 min for short
+            
             const videoBuffer = await axios.get(downloadUrl, {
                 responseType: 'arraybuffer',
-                timeout: 180000,
+                timeout: downloadTimeout,
+                maxContentLength: Infinity,
+                maxBodyLength: Infinity,
                 headers: {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                    'Accept': '*/*',
+                    'Accept-Encoding': 'gzip, deflate, br',
+                    'Connection': 'keep-alive'
                 }
             });
 
-            // Check buffer size
-            if (videoBuffer.data.length < 50000) {
-                console.log(`[VIDEO] ⚠️ Buffer too small (${videoBuffer.data.length} bytes), might be error page`);
-                // Still try to send, maybe it's a valid small file
+            const fileSizeMB = (videoBuffer.data.length / (1024 * 1024)).toFixed(2);
+            console.log(`[VIDEO] Downloaded ${fileSizeMB} MB from ${usedApi}`);
+
+            // Check if file is valid (not HTML error page)
+            const bufferString = videoBuffer.data.toString('utf-8', 0, 500);
+            if (bufferString.includes('<!DOCTYPE') || bufferString.includes('<html>')) {
+                console.log(`[VIDEO] ⚠️ ${usedApi} returned HTML instead of video`);
+                await reply(`❌ ${usedApi} returned an error page. Trying next API...`);
+                
+                // Try next API if available
+                const remainingApis = apis.filter(a => a.name !== usedApi);
+                for (const api of remainingApis) {
+                    try {
+                        console.log(`[VIDEO] Retry with ${api.name}...`);
+                        const link = await api.fn();
+                        if (link) {
+                            const retryBuffer = await axios.get(link, {
+                                responseType: 'arraybuffer',
+                                timeout: downloadTimeout,
+                                maxContentLength: Infinity,
+                                maxBodyLength: Infinity,
+                                headers: { 'User-Agent': 'Mozilla/5.0' }
+                            });
+                            if (retryBuffer.data.length > 100000) {
+                                await conn.sendMessage(from, {
+                                    video: Buffer.from(retryBuffer.data),
+                                    caption: `🎬 *${videoInfo.title || 'Video'}*\n\n📥 Downloaded via: ${api.name} ✅\n*© Powered by ERFAN-MD*`
+                                }, { quoted: mek });
+                                await conn.sendMessage(from, { react: { text: '✅', key: m.key } });
+                                return;
+                            }
+                        }
+                    } catch (retryErr) {
+                        console.log(`[VIDEO] ❌ ${api.name} retry failed:`, retryErr.message);
+                    }
+                }
+                return await reply("❌ All APIs returned error pages. Try again later.");
             }
 
+            // ── Send the video ──
             await conn.sendMessage(from, {
                 video: Buffer.from(videoBuffer.data),
-                caption: `🎬 *${videoInfo.title || 'Video'}*\n\n📥 Downloaded via: ${usedApi} ✅\n*© Powered by ERFAN-MD*`
+                caption: `🎬 *${videoInfo.title || 'Video'}*\n\n📥 Downloaded via: ${usedApi} ✅\n📦 Size: ${fileSizeMB} MB\n*© Powered by ERFAN-MD*`
             }, { quoted: mek });
 
             await conn.sendMessage(from, { react: { text: '✅', key: m.key } });
-            console.log(`[VIDEO] ✅ Successfully sent video (${videoBuffer.data.length} bytes)`);
+            console.log(`[VIDEO] ✅ Successfully sent video (${fileSizeMB} MB)`);
 
         } catch (dlErr) {
             console.error('[VIDEO] Download error:', dlErr.message);
             
-            // If download fails with one API, try the next
-            if (downloadUrl && usedApi) {
-                console.log(`[VIDEO] ⚠️ ${usedApi} download failed, but we have a link`);
-                await reply(`❌ Downloaded via ${usedApi} but failed to send. Try again with a direct URL.`);
+            if (dlErr.code === 'ECONNABORTED') {
+                await reply(`❌ Download timed out! The video might be too long.\n\n💡 Try using a direct YouTube URL or a shorter video.`);
+            } else if (dlErr.response?.status === 404) {
+                await reply(`❌ ${usedApi} link expired or not found. Try again.`);
             } else {
-                await reply("❌ Failed to download video. Try again later.");
+                await reply(`❌ Failed to download video from ${usedApi}. Try again later.`);
             }
             await conn.sendMessage(from, { react: { text: '❌', key: m.key } });
         }
