@@ -17,7 +17,7 @@ ffmpeg.setFfmpegPath(ffmpegPath.path);
 
 cmd({
     pattern: "tgsticker",
-    alias: ["tgstickers", "telegramsticker", "tgs"],
+    alias: ["tgstickers", "telegramsticker", "tg"],
     desc: "Download stickers from Telegram sticker pack",
     category: "download",
     react: "🎨",
