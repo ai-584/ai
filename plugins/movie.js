@@ -14,10 +14,12 @@ cmd({
     category: "converter",
     react: "🎵",
     filename: __filename
-}, async (conn, mek, m, { from, q, reply, isReply }) => {
+}, async (conn, mek, m, { from, q, reply }) => {
     try {
-        // ── Check if replying to a video ──
-        if (!isReply) {
+        // ── Check if replying to a message ──
+        const quotedMsg = m.quoted || m.message?.extendedTextMessage?.contextInfo?.quotedMessage;
+        
+        if (!quotedMsg) {
             return reply(`
 🎵 *VIDEO TO AUDIO CONVERTER*
 
@@ -31,40 +33,39 @@ cmd({
 `);
         }
 
-        // ── Get the replied message ──
-        const quotedMsg = m.quoted;
-        if (!quotedMsg) {
-            return reply("❌ Please reply to a video message!");
-        }
+        // ── Check if it's a video message ──
+        const videoMsg = quotedMsg.videoMessage || 
+                        quotedMsg.message?.videoMessage ||
+                        quotedMsg.documentMessage?.mimetype?.includes('video');
 
-        // ── Check if it's a video ──
-        if (!quotedMsg.message?.videoMessage) {
+        if (!videoMsg) {
             return reply("❌ This is not a video! Please reply to a video message.");
         }
 
-        // ── Get video from WhatsApp ──
-        const videoMsg = quotedMsg.message.videoMessage;
-        const videoUrl = await conn.downloadMediaMessage(quotedMsg);
+        // ── Send initial response ──
+        await reply("⏳ *Downloading video...*");
 
-        if (!videoUrl || videoUrl.length === 0) {
-            return reply("❌ Failed to download video. Please try again.");
-        }
-
-        // ── Show loading ──
-        await conn.sendMessage(from, {
-            react: { text: '⏳', key: m.key }
-        });
-
-        await reply("🎵 *Converting video to audio...*\n⏳ Please wait...");
-
-        // ── Convert using converter.js ──
+        // ── Download video from WhatsApp ──
         try {
-            // toAudio method handles video → MP3 conversion
-            const audioBuffer = await converter.toAudio(videoUrl, 'mp4');
+            const videoBuffer = await conn.downloadMediaMessage(m.quoted || m.message.extendedTextMessage.contextInfo.quotedMessage);
+            
+            if (!videoBuffer || videoBuffer.length === 0) {
+                return reply("❌ Failed to download video. Please try again.");
+            }
+
+            console.log(`[TOAUDIO] Video downloaded: ${(videoBuffer.length / 1024 / 1024).toFixed(2)} MB`);
+
+            // ── Show conversion status ──
+            await reply("🔄 *Converting video to audio...*\n⏳ Please wait (may take a few seconds)");
+
+            // ── Convert using converter.js ──
+            const audioBuffer = await converter.toAudio(videoBuffer, 'mp4');
 
             if (!audioBuffer || audioBuffer.length === 0) {
                 throw new Error("Conversion failed - empty output");
             }
+
+            console.log(`[TOAUDIO] Audio converted: ${(audioBuffer.length / 1024 / 1024).toFixed(2)} MB`);
 
             // ── Send the audio ──
             await conn.sendMessage(from, {
@@ -74,15 +75,14 @@ cmd({
                 ptt: false
             }, { quoted: mek });
 
+            // ── Success reaction ──
             await conn.sendMessage(from, {
                 react: { text: '✅', key: m.key }
             });
 
-            console.log(`[TOAUDIO] ✅ Audio sent successfully (${(audioBuffer.length / 1024 / 1024).toFixed(2)} MB)`);
-
-        } catch (convertErr) {
-            console.error("[TOAUDIO] Conversion error:", convertErr);
-            return reply(`❌ Conversion failed: ${convertErr.message || 'Unknown error'}`);
+        } catch (dlErr) {
+            console.error("[TOAUDIO] Download error:", dlErr);
+            return reply(`❌ Failed to download video: ${dlErr.message || 'Unknown error'}`);
         }
 
     } catch (err) {
