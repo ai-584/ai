@@ -16,7 +16,8 @@ cmd({
     filename: __filename
 }, async (conn, mek, m, { from, q, reply }) => {
     try {
-        if (!q) return await reply(`
+        if (!q) {
+            return await reply(`
 🔍 *TIKTOK HASHTAG ANALYZER*
 
 📌 Usage: .tt <hashtag>
@@ -31,7 +32,8 @@ cmd({
 • Related hashtags
 • Trending hashtags
 • Total posts & views
-        `);
+`);
+        }
 
         // Clean the hashtag (remove # if present)
         let tag = q.trim();
@@ -55,20 +57,27 @@ cmd({
             }
         });
 
+        console.log(`[TIKTOK] Response status: ${response.status}`);
+        console.log(`[TIKTOK] Data:`, JSON.stringify(response.data).substring(0, 200));
+
         const data = response.data;
 
-        if (!data.status) {
-            return await reply("❌ Failed to fetch hashtag data. Please try again.");
+        // Check if response is valid
+        if (!data || !data.status) {
+            console.log('[TIKTOK] Invalid response:', data);
+            return await reply("❌ Failed to fetch hashtag data. The API might be down.\n\n💡 Try again later or use a different hashtag.");
         }
 
         const result = data.result;
-        const report = result.report;
+        if (!result) {
+            return await reply("❌ No data found for this hashtag. Try another one.");
+        }
 
         // ── Find the searched hashtag in top10 ──
         let tagData = null;
-        if (result.top10) {
+        if (result.top10 && Array.isArray(result.top10)) {
             tagData = result.top10.find(item => 
-                item.hashtag.toLowerCase() === `#${tag.toLowerCase()}`
+                item.hashtag && item.hashtag.toLowerCase() === `#${tag.toLowerCase()}`
             );
         }
 
@@ -86,18 +95,19 @@ cmd({
             message += `
 📊 *STATS FOR #${tag}*
 ━━━━━━━━━━━━━━━━━━
-📝 *Posts:* ${tagData.posts}
-👁️ *Views:* ${tagData.views}
-📈 *Views/Post:* ${tagData.post_views}
+📝 *Posts:* ${tagData.posts || 'N/A'}
+👁️ *Views:* ${tagData.views || 'N/A'}
+📈 *Views/Post:* ${tagData.post_views || 'N/A'}
 `;
         } else {
             message += `
 ⚠️ *#${tag} not in top 10*
-But here's overall stats:
+Showing overall stats:
 `;
         }
 
         // ── Overall Report ──
+        const report = result.report;
         if (report) {
             message += `
 📊 *OVERALL REPORT*
@@ -109,7 +119,7 @@ But here's overall stats:
         }
 
         // ── Most Popular Hashtags ──
-        if (result.most_popular && result.most_popular.length > 0) {
+        if (result.most_popular && Array.isArray(result.most_popular) && result.most_popular.length > 0) {
             const popular = result.most_popular.slice(0, 10).join(', ');
             message += `
 🔥 *MOST POPULAR*
@@ -119,28 +129,32 @@ ${popular}
         }
 
         // ── Top 5 Related Hashtags ──
-        if (result.related && result.related.length > 0) {
+        if (result.related && Array.isArray(result.related) && result.related.length > 0) {
             message += `
 🔗 *RELATED HASHTAGS*
 ━━━━━━━━━━━━━━━━━━
 `;
             const related = result.related.slice(0, 5);
             related.forEach(item => {
-                message += `• ${item.hashtag}\n`;
-                message += `  📝 ${item.posts} | 👁️ ${item.views}\n`;
+                if (item.hashtag) {
+                    message += `• ${item.hashtag}\n`;
+                    message += `  📝 ${item.posts || 'N/A'} | 👁️ ${item.views || 'N/A'}\n`;
+                }
             });
         }
 
         // ── Top 5 Trending ──
-        if (result.trending && result.trending.length > 0) {
+        if (result.trending && Array.isArray(result.trending) && result.trending.length > 0) {
             message += `
 📈 *TRENDING NOW*
 ━━━━━━━━━━━━━━━━━━
 `;
             const trending = result.trending.slice(0, 5);
             trending.forEach(item => {
-                message += `• ${item.hashtag}\n`;
-                message += `  📝 ${item.posts} | 👁️ ${item.views}\n`;
+                if (item.hashtag) {
+                    message += `• ${item.hashtag}\n`;
+                    message += `  📝 ${item.posts || 'N/A'} | 👁️ ${item.views || 'N/A'}\n`;
+                }
             });
         }
 
@@ -161,7 +175,16 @@ ${popular}
 
     } catch (err) {
         console.error("❌ Error in .tt command:", err);
-        await reply(`⚠️ Error: ${err.message || 'Something went wrong!'}`);
+        
+        // Check if it's a connection error
+        if (err.code === 'ECONNABORTED') {
+            await reply("❌ Request timed out! The API is taking too long to respond.\n\n💡 Try again later.");
+        } else if (err.response) {
+            await reply(`❌ API Error: ${err.response.status}\n\n💡 The TikTok API might be down. Try again later.`);
+        } else {
+            await reply(`❌ Error: ${err.message || 'Something went wrong!'}`);
+        }
+        
         await conn.sendMessage(from, {
             react: { text: '❌', key: m.key }
         });
