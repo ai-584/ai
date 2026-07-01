@@ -6,10 +6,10 @@ import { cmd } from '../command.js';
 const __filename = fileURLToPath(import.meta.url);
 
 // ──────────────────────────────────────────────────────────────
-// 🎬 VIDEO COMMAND (Fixed - Auto-Skip Broken APIs)
+// 🎬 VIDEO COMMAND (Xemoz REMOVED - Only Working APIs)
 // ──────────────────────────────────────────────────────────────
 cmd({
-    pattern: "videoh",
+    pattern: "vido",
     alias: ["ytv", "ytmp4", "v"],
     desc: "Download YouTube video (MP4) with auto fallback",
     category: "download",
@@ -64,7 +64,7 @@ cmd({
             caption
         }, { quoted: mek });
 
-        // ── API Priority List (Xemoz moved to LAST because it's broken) ──
+        // ── API Priority List (Xemoz REMOVED) ──
         let downloadUrl = null;
         let usedApi = '';
 
@@ -92,12 +92,6 @@ cmd({
                     if (selected && selected.download_url) return selected.download_url;
                 }
                 throw new Error('Nanzz failed');
-            }},
-            // Xemoz moved to LAST because it's unreliable
-            { name: 'Xemoz', fn: async () => {
-                const res = await axios.get(`https://api-xemoz-official.my.id/api/donwloader/ytmp4.php?url=${encodeURIComponent(url)}`, { timeout: 15000 });
-                if (res.data?.status && res.data?.result?.download) return res.data.result.download;
-                throw new Error('Xemoz failed');
             }}
         ];
 
@@ -128,7 +122,7 @@ cmd({
 
         if (!downloadUrl) {
             await conn.sendMessage(from, { react: { text: '❌', key: m.key } });
-            return await reply("❌ All 5 APIs failed! Please try again later.");
+            return await reply("❌ All APIs failed! Please try again later.");
         }
 
         // ── Download and send the video ──
