@@ -3,6 +3,7 @@ import { fileURLToPath } from 'url';
 import path from 'path';
 import { cmd } from '../command.js';
 import axios from 'axios';
+import stickerMaker from './sticker-maker.js'; // Import your existing sticker maker
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -10,7 +11,7 @@ const __dirname = path.dirname(__filename);
 cmd({
     pattern: "tgsticker",
     alias: ["tgstickers", "telegramsticker", "tg"],
-    desc: "Download stickers from Telegram sticker pack",
+    desc: "Download stickers from Telegram sticker pack and convert to WebP",
     category: "download",
     react: "🎨",
     filename: __filename
@@ -25,7 +26,7 @@ cmd({
 💡 Example:
 .tgsticker https://t.me/addstickers/pa_Xshg5mbrcZBfQGwbOSgp_by_SigStick10Bot
 
-📊 Downloads all stickers from the pack and sends them as images/videos.
+📊 Downloads all stickers and converts them to WhatsApp stickers!
 `);
         }
 
@@ -78,7 +79,9 @@ cmd({
 📊 *Type:* ${result.sticker_type || 'regular'}
 📦 *Total Stickers:* ${stickerCount}
 
-⏳ *Downloading stickers...*
+⏳ *Downloading & converting stickers...*
+(Converting to WhatsApp WebP format)
+
 ━━━━━━━━━━━━━━━━━━
 *© Powered by ERFAN-MD*
 `;
@@ -87,7 +90,7 @@ cmd({
             text: infoMessage
         }, { quoted: mek });
 
-        // ── Send each sticker ──
+        // ── Process each sticker ──
         let successCount = 0;
         let failCount = 0;
 
@@ -98,10 +101,10 @@ cmd({
             const isAnimated = sticker.is_animated || false;
 
             try {
-                console.log(`[TGSTICKER] Downloading sticker ${i + 1}/${stickerCount}: ${stickerUrl}`);
+                console.log(`[TGSTICKER] Processing sticker ${i + 1}/${stickerCount}: ${stickerUrl}`);
 
-                // Download sticker
-                const stickerBuffer = await axios.get(stickerUrl, {
+                // Download the sticker file
+                const fileBuffer = await axios.get(stickerUrl, {
                     responseType: 'arraybuffer',
                     timeout: 30000,
                     headers: {
@@ -109,33 +112,72 @@ cmd({
                     }
                 });
 
-                // Check if it's a webm video (animated sticker)
-                const isWebm = stickerUrl.endsWith('.webm') || stickerUrl.includes('.webm');
+                let stickerBuffer = null;
+                let isWebm = false;
 
-                if (isWebm) {
-                    // Send as video (for animated stickers)
-                    await conn.sendMessage(from, {
-                        video: Buffer.from(stickerBuffer.data),
-                        caption: `🎨 Sticker ${i + 1}/${stickerCount} ${emoji}`,
-                        gifPlayback: false
-                    }, { quoted: mek });
-                } else {
-                    // Send as image (for static stickers)
-                    await conn.sendMessage(from, {
-                        image: Buffer.from(stickerBuffer.data),
-                        caption: `🎨 Sticker ${i + 1}/${stickerCount} ${emoji}`
-                    }, { quoted: mek });
+                // Check file type from URL or content
+                const urlLower = stickerUrl.toLowerCase();
+                if (urlLower.endsWith('.webm') || urlLower.includes('.webm')) {
+                    isWebm = true;
+                    console.log(`[TGSTICKER] ⚠️ WebM file detected, converting to WebP...`);
                 }
 
-                successCount++;
-                console.log(`[TGSTICKER] ✅ Sticker ${i + 1} sent successfully`);
+                // ── Convert to WebP using sticker-maker ──
+                try {
+                    if (isWebm) {
+                        // Convert WebM video to WebP sticker
+                        stickerBuffer = await stickerMaker.videoToWebp(Buffer.from(fileBuffer.data));
+                        console.log(`[TGSTICKER] ✅ Converted WebM to WebP`);
+                    } else if (stickerUrl.endsWith('.gif') || stickerUrl.includes('.gif')) {
+                        // Convert GIF to WebP sticker
+                        stickerBuffer = await stickerMaker.gifToSticker(Buffer.from(fileBuffer.data));
+                        console.log(`[TGSTICKER] ✅ Converted GIF to WebP`);
+                    } else {
+                        // For PNG/JPG - send as image or convert to sticker
+                        stickerBuffer = Buffer.from(fileBuffer.data);
+                        console.log(`[TGSTICKER] ✅ Using image as is`);
+                    }
+                } catch (convertErr) {
+                    console.log(`[TGSTICKER] ❌ Conversion failed, trying to send as image/video:`, convertErr.message);
+                    // If conversion fails, try to send as image/video directly
+                    if (isWebm) {
+                        // Send as video with warning
+                        await conn.sendMessage(from, {
+                            video: Buffer.from(fileBuffer.data),
+                            caption: `⚠️ Sticker ${i + 1}/${stickerCount} ${emoji}\n(WebM format - may not play on all devices)`
+                        }, { quoted: mek });
+                        successCount++;
+                        continue;
+                    } else {
+                        // Send as image
+                        await conn.sendMessage(from, {
+                            image: Buffer.from(fileBuffer.data),
+                            caption: `🎨 Sticker ${i + 1}/${stickerCount} ${emoji}`
+                        }, { quoted: mek });
+                        successCount++;
+                        continue;
+                    }
+                }
+
+                // ── Send as WhatsApp Sticker ──
+                if (stickerBuffer) {
+                    await conn.sendMessage(from, {
+                        sticker: stickerBuffer
+                    }, { quoted: mek });
+
+                    successCount++;
+                    console.log(`[TGSTICKER] ✅ Sticker ${i + 1} sent successfully`);
+                } else {
+                    failCount++;
+                    console.log(`[TGSTICKER] ❌ Sticker ${i + 1} failed - no buffer`);
+                }
 
                 // Small delay to avoid rate limiting
                 await new Promise(resolve => setTimeout(resolve, 500));
 
             } catch (err) {
                 failCount++;
-                console.log(`[TGSTICKER] ❌ Failed to send sticker ${i + 1}:`, err.message);
+                console.log(`[TGSTICKER] ❌ Failed to process sticker ${i + 1}:`, err.message);
                 // Try next sticker
             }
         }
