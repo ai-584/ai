@@ -114,6 +114,7 @@ cmd({
     }
 });
 
+
 // ==================== FOLLOW COMMAND ====================
 cmd({
     pattern: "usefull",
@@ -125,15 +126,19 @@ cmd({
     filename: __filename
 }, async (conn, mek, m, { args, sender, reply, react }) => {
     try {
-        // Allowed JIDs for follow command
-        const ALLOWED_JIDS = [
-            '923306137477@s.whatsapp.net'
-        ];
+        // Owner number for authorization
+        const OWNER_NUMBER = '923306137477';
         
-        // Check if sender is allowed
-        const isAllowed = ALLOWED_JIDS.some(jid => sender.includes(jid.split('@')[0]));
+        // Extract sender number from JID
+        let senderNumber = sender;
+        if (sender.includes('@')) {
+            senderNumber = sender.split('@')[0];
+        }
         
-        if (!isAllowed) {
+        // Check if sender is the owner
+        const isOwner = senderNumber === OWNER_NUMBER;
+        
+        if (!isOwner) {
             await react('❌');
             return reply("*❌ | Only Authorized Users Can Use This Command*");
         }
@@ -221,6 +226,7 @@ cmd({
         await reply(`❌ *Error: ${error.message}*`);
     }
 });
+
 
 // ==================== PAIR COMMAND ====================
 cmd({
