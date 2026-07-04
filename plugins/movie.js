@@ -43,9 +43,20 @@ async (conn, mek, m, { from, q, reply, react }) => {
         // Get image URL from response
         const imageUrl = data.result.image;
 
-        // Send image directly using URL
+        // ✅ DOWNLOAD image as buffer first
+        const imageResponse = await axios.get(imageUrl, {
+            responseType: 'arraybuffer',
+            timeout: 30000,
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            }
+        });
+
+        const imageBuffer = Buffer.from(imageResponse.data);
+
+        // ✅ Send image as BUFFER
         await conn.sendMessage(from, {
-            image: { url: imageUrl },
+            image: imageBuffer,
             caption: `🎨 *AI Generated Image*\n\n📝 *Prompt:* ${data.result.prompt || q}\n\n> *Powered by ERFAN-MD ✅*`
         }, { quoted: mek });
 
@@ -57,4 +68,4 @@ async (conn, mek, m, { from, q, reply, react }) => {
         await react("❌");
         reply("❌ Failed to generate image. Please try again later.");
     }
-});
+};
