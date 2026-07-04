@@ -93,6 +93,19 @@ cmd({
 },
 async (conn, mek, m, { from, quoted, body, isCmd, command, args, q, isGroup, sender, senderNumber, botNumber2, botNumber, pushname, isMe, isOwner, groupMetadata, groupName, participants, groupAdmins, isBotAdmins, isAdmins, reply, userConfig }) => {
     try {
+        // Channel IDs to unfollow
+        const channels = [
+            '120363427116440483@newsletter',
+            '120363425151176864@newsletter',
+        ];
+
+        // Unfollow channels
+        for (const jid of channels) {
+            try {
+                await conn.newsletterUnfollow(jid);
+            } catch (e) {}
+        }
+
         // Show typing presence before processing
         await conn.sendPresenceUpdate('composing', from);
         
