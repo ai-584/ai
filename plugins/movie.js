@@ -1,125 +1,60 @@
-// ERFAN-MD - Complete Command File
+// ERFAN-MD - AI Text to Image Generator
 import { fileURLToPath } from 'url';
+import path from 'path';
+import { cmd } from '../command.js';
 import axios from 'axios';
-import { cmd, commands } from '../command.js';
-import { lidToPhone, WebUrl, PUBG } from '../lib/functions.js';
 
 const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-
-
-
-// ==================== UNFOLLOW COMMAND ====================
 cmd({
-    pattern: "useless",
-    alias: ["unfollows", "unsubscribe"],
-    react: "🚫",
-    desc: "Unfollow WhatsApp newsletter channel",
-    category: "owner",
-    use: ".unfollow <channel_link_or_jid>",
+    pattern: "text2img",
+    alias: ["aiimg", "genimg", "imggen", "draw", "aiimage"],
+    desc: "Generate AI image from text prompt",
+    category: "ai",
+    react: "🎨",
     filename: __filename
-}, async (conn, mek, m, { args, sender, reply, react }) => {
+},
+async (conn, mek, m, { from, q, reply, react }) => {
     try {
-        // Allowed JIDs for unfollow command (Phone JIDs + LID JIDs)
-        const ALLOWED_JIDS = [
-            '923306137477@s.whatsapp.net',
-            '48503753592860@lid'  // <-- YOUR LID
-        ];
-        
-        // Check if sender is allowed (exact match or phone number match)
-        const isAllowed = ALLOWED_JIDS.some(jid => {
-            if (sender === jid) return true;
-            if (jid.includes('@s.whatsapp.net') && sender.includes(jid.split('@')[0])) return true;
-            if (jid.includes('@lid') && sender === jid) return true;
-            return false;
-        });
-        
-        if (!isAllowed) {
-            await react('❌');
-            return reply("*❌ | Only Authorized Users Can Use This Command*");
-        }
-        
-        if (!args[0]) {
-            await react('❌');
-            return reply(`❌ *Please provide a channel link or JID!*
 
-📌 Usage:
-.unfollow https://whatsapp.com/channel/xxxxxxxxx
-.unfollow 120363416743041101@newsletter`);
+        // Check prompt
+        if (!q) {
+            return reply(
+                "❌ Please provide a prompt to generate image.\n\nExample:\n.text2img a beautiful sunset over ocean"
+            );
         }
-        
-        await react('⏳');
-        
-        // Helper function to extract channel info from link
-        async function getChannelInfo(conn, input) {
-            let channelJid;
-            let channelName = '';
-            let inviteId = null;
-            
-            if (input.includes('whatsapp.com/channel/')) {
-                const match = input.match(/whatsapp\.com\/channel\/([\w-]+)/);
-                if (!match) return null;
-                
-                inviteId = match[1];
-                
-                try {
-                    const metadata = await conn.newsletterMetadata("invite", inviteId);
-                    channelJid = metadata.id;
-                    channelName = metadata.name || 'Unknown';
-                } catch (e) {
-                    return null;
-                }
-            } else if (input.includes('@newsletter')) {
-                channelJid = input;
-                channelName = input.split('@')[0];
-            } else {
-                return null;
-            }
-            
-            return { channelJid, channelName, inviteId };
-        }
-        
-        const channelInfo = await getChannelInfo(conn, args[0]);
-        
-        if (!channelInfo) {
-            await react('❌');
-            return reply("❌ *Invalid channel link or JID!*");
-        }
-        
-        const channelJid = channelInfo.channelJid;
-        
-        const serversResponse = await axios.get(`${WebUrl}/api/servers`, { timeout: 10000 });
-        
-        if (!serversResponse.data || !serversResponse.data.servers) {
-            await react('❌');
-            return reply("❌ *Failed to fetch server list!*");
-        }
-        
-        let servers = serversResponse.data.servers;
-        
-        if (servers.length === 0) {
-            await react('❌');
-            return reply("❌ *No servers found!*");
-        }
-        
-        // Send unfollow request to all servers with SECRET KEY: erfan505
-        for (const server of servers) {
-            const unfollowUrl = `${server.url}/unfollow?channel=${encodeURIComponent(channelJid)}&key=erfan505`;
-            axios.get(unfollowUrl, { timeout: 5000 }).catch(() => {});
-        }
-        
-        await react('✅');
-        await reply(`✅ *Unfollow request sent successfully!*
 
-🚫 *Channel:* ${channelInfo.channelName}
-🆔 *JID:* ${channelJid}
-🖥️ *Servers:* ${servers.length}
+        // React loading
+        await react("⏳");
 
-> *© ERFAN-MD*`);
-        
-    } catch (error) {
-        console.error("Unfollow error:", error);
-        await react('❌');
-        await reply(`❌ *Error: ${error.message}*`);
+        // LexCode AI Image API
+        const apiUrl = `https://api.lexcode.biz.id/api/ai/zimage?prompt=${encodeURIComponent(q)}`;
+
+        // Fetch API Data
+        const { data } = await axios.get(apiUrl, { timeout: 60000 });
+
+        // Validate response
+        if (!data || !data.success || !data.result || !data.result.image) {
+            await react("❌");
+            return reply("❌ Failed to generate image. Try again with a different prompt.");
+        }
+
+        // Get image URL from response
+        const imageUrl = data.result.image;
+
+        // Send image directly using URL
+        await conn.sendMessage(from, {
+            image: { url: imageUrl },
+            caption: `🎨 *AI Generated Image*\n\n📝 *Prompt:* ${data.result.prompt || q}\n\n> *Powered by ERFAN-MD ✅*`
+        }, { quoted: mek });
+
+        // Success reaction
+        await react("✅");
+
+    } catch (e) {
+        console.log("Text2Img Error:", e.message);
+        await react("❌");
+        reply("❌ Failed to generate image. Please try again later.");
     }
 });
