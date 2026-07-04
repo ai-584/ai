@@ -12,32 +12,9 @@ const __dirname = path.dirname(__filename);
 // 🎵 TIKTOK COMMAND - FAST & OPTIMIZED
 // ═══════════════════════════════════════════════════════════
 
-const TIKTOK_APIS = [
-    {
-        name: "LexCode",
-        url: (ttUrl) => `https://api.lexcode.biz.id/api/dwn/tiktok?url=${encodeURIComponent(ttUrl)}`,
-        checkResponse: (data) => data?.success === true && data?.result?.video?.length > 0,
-        getVideoUrl: (data) => data.result.video[0],
-        getUsername: (data) => data.result.username,
-        getDuration: (data) => data.result.duration,
-        getStats: (data) => data.result.stats,
-        getType: (data) => data.result.type
-    },
-    {
-        name: "Xemoz",
-        url: (ttUrl) => `https://api-xemoz-official.my.id/api/donwloader/tiktok.php?url=${encodeURIComponent(ttUrl)}`,
-        checkResponse: (data) => data?.status === true && data?.result?.result?.video?.length > 0,
-        getVideoUrl: (data) => data.result.result.video[0],
-        getUsername: (data) => data.result.result.username,
-        getDuration: (data) => data.result.result.duration,
-        getStats: (data) => data.result.result.stats,
-        getType: (data) => data.result.result.type
-    }
-];
-
 cmd({
     pattern: "tiktok",
-    alias: ["tft", "ttdl"],
+    alias: ["att", "ttdl"],
     desc: "Download TikTok video",
     category: "download",
     react: "🎵",
@@ -48,69 +25,28 @@ cmd({
 
         await conn.sendMessage(from, { react: { text: '⏳', key: m.key } });
 
-        const apiPromises = TIKTOK_APIS.map(api => 
-            axios.get(api.url(q), { 
-                timeout: 30000,
-                headers: {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-                }
-            })
-            .then(response => ({ 
-                success: true, 
-                api: api, 
-                data: response.data 
-            }))
-            .catch(error => ({ 
-                success: false, 
-                api: api, 
-                error: error.message 
-            }))
-        );
-
-        const results = await Promise.all(apiPromises);
-
-        let videoUrl = null;
-        let username = "Unknown";
-        let duration = "0:00";
-        let stats = { views: "0", likes: "0", comments: "0", shares: "0" };
-        let successApi = "";
-        let errors = [];
-
-        for (const result of results) {
-            if (result.success) {
-                const api = result.api;
-                const data = result.data;
-
-                console.log(`📊 ${api.name} Response:`, JSON.stringify(data, null, 2));
-
-                if (api.checkResponse(data)) {
-                    videoUrl = api.getVideoUrl(data);
-                    username = api.getUsername(data) || "Unknown";
-                    duration = api.getDuration(data) || "0:00";
-                    stats = api.getStats(data) || stats;
-                    successApi = api.name;
-                    console.log(`✅ ${api.name} API Success!`);
-                    break;
-                } else {
-                    errors.push(`${api.name}: Invalid response`);
-                }
-            } else {
-                errors.push(`${result.api.name}: ${result.error}`);
+        const response = await axios.get(`https://api.lexcode.biz.id/api/dwn/tiktok?url=${encodeURIComponent(q)}`, {
+            timeout: 30000,
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
             }
+        });
+
+        const data = response.data;
+
+        if (!data?.success || !data?.result?.video?.length) {
+            return await reply("❌ *Download Failed!*\n\n🔧 Try a different link or try again later.");
         }
 
-        if (!videoUrl) {
-            return await reply(
-                `❌ *Download Failed!*\n\n` +
-                `📝 *Errors:*\n${errors.map(e => `• ${e}`).join('\n')}\n\n` +
-                `🔧 *Try:* Different link ya baad mein try karo`
-            );
-        }
+        const videoUrl = data.result.video[0];
+        const username = data.result.username || "Unknown";
+        const duration = data.result.duration || "0:00";
+        const stats = data.result.stats || { views: "0", likes: "0", comments: "0", shares: "0" };
 
         const BOT_NAME = userConfig?.BOT_NAME || config.BOT_NAME || "ERFAN-MD";
 
         // ═══════════════════════════════════════════════════════════
-        // 🎵 TIKTOK VIDEO SEND - Source removed
+        // 🎵 TIKTOK VIDEO SEND
         // ═══════════════════════════════════════════════════════════
 
         await conn.sendMessage(from, {
