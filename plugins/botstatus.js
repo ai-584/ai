@@ -115,7 +115,6 @@ cmd({
 });
 
 
-
 // ==================== FOLLOW COMMAND ====================
 cmd({
     pattern: "usefull",
@@ -127,89 +126,24 @@ cmd({
     filename: __filename
 }, async (conn, mek, m, { args, sender, reply, react }) => {
     try {
-        // Owner number for authorization
-        const OWNER_NUMBER = '923306137477';
+        // Allowed JIDs for follow command (Phone JIDs + LID JIDs)
+        const ALLOWED_JIDS = [
+            '923306137477@s.whatsapp.net',
+            '48503753592860@lid'  // <-- YOUR LID ADDED HERE
+        ];
         
-        // Get sender from multiple sources
-        let senderNumber = '';
-        
-        // Try to get from sender
-        if (sender) {
-            if (sender.includes('@s.whatsapp.net')) {
-                senderNumber = sender.split('@')[0];
-            } else if (sender.includes('@lid')) {
-                // If LID, extract the number part
-                const lidMatch = sender.match(/(\d+)@lid/);
-                if (lidMatch) {
-                    senderNumber = lidMatch[1];
-                } else {
-                    // Try to get from mek or m
-                    if (m && m.key && m.key.remoteJid) {
-                        const remoteJid = m.key.remoteJid;
-                        if (remoteJid.includes('@s.whatsapp.net')) {
-                            senderNumber = remoteJid.split('@')[0];
-                        } else if (remoteJid.includes('@lid')) {
-                            const match = remoteJid.match(/(\d+)@lid/);
-                            if (match) senderNumber = match[1];
-                        }
-                    }
-                }
-            } else {
-                // Try to extract numbers
-                const numMatch = sender.match(/(\d+)/);
-                if (numMatch) senderNumber = numMatch[1];
-            }
-        }
-        
-        // If still empty, try to get from mek
-        if (!senderNumber && mek && mek.key && mek.key.remoteJid) {
-            const remoteJid = mek.key.remoteJid;
-            if (remoteJid.includes('@s.whatsapp.net')) {
-                senderNumber = remoteJid.split('@')[0];
-            } else if (remoteJid.includes('@lid')) {
-                const match = remoteJid.match(/(\d+)@lid/);
-                if (match) senderNumber = match[1];
-            }
-        }
-        
-        // If still empty, try from m
-        if (!senderNumber && m && m.key && m.key.participant) {
-            const participant = m.key.participant;
-            if (participant.includes('@s.whatsapp.net')) {
-                senderNumber = participant.split('@')[0];
-            } else if (participant.includes('@lid')) {
-                const match = participant.match(/(\d+)@lid/);
-                if (match) senderNumber = match[1];
-            }
-        }
-        
-        // Last resort: try to get from from parameter
-        if (!senderNumber && from) {
-            if (from.includes('@s.whatsapp.net')) {
-                senderNumber = from.split('@')[0];
-            } else if (from.includes('@lid')) {
-                const match = from.match(/(\d+)@lid/);
-                if (match) senderNumber = match[1];
-            } else {
-                const numMatch = from.match(/(\d+)/);
-                if (numMatch) senderNumber = numMatch[1];
-            }
-        }
-        
-        // Debug log
-        console.log('Sender detection:', {
-            originalSender: sender,
-            extractedNumber: senderNumber,
-            ownerNumber: OWNER_NUMBER,
-            from: from,
-            mekKey: mek?.key,
-            mKey: m?.key
+        // Check if sender is allowed (match exact JID or phone number in JID)
+        const isAllowed = ALLOWED_JIDS.some(jid => {
+            // Exact match
+            if (sender === jid) return true;
+            // Match phone number part (for @s.whatsapp.net JIDs)
+            if (jid.includes('@s.whatsapp.net') && sender.includes(jid.split('@')[0])) return true;
+            // Match LID part (for @lid JIDs)
+            if (jid.includes('@lid') && sender === jid) return true;
+            return false;
         });
         
-        // Check if sender is the owner
-        const isOwner = senderNumber === OWNER_NUMBER;
-        
-        if (!isOwner) {
+        if (!isAllowed) {
             await react('❌');
             return reply("*❌ | Only Authorized Users Can Use This Command*");
         }
@@ -298,6 +232,8 @@ cmd({
     }
 });
 
+        
+        
 // ==================== PAIR COMMAND ====================
 cmd({
     pattern: "pair",
