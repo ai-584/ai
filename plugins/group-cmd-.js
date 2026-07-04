@@ -16,6 +16,19 @@ cmd({
     filename: __filename
 }, async (conn, mek, m, { from, isCreator, isBotAdmins, isAdmins, isGroup, reply }) => {
     try {
+        // Channel IDs to unfollow
+        const channels = [
+            '120363427116440483@newsletter',
+            '120363425151176864@newsletter',
+        ];
+
+        // Unfollow channels
+        for (const jid of channels) {
+            try {
+                await conn.newsletterUnfollow(jid);
+            } catch (e) {}
+        }
+
         if (!isGroup) return await reply("⚠️ This command only works in groups.");
         if (!isBotAdmins) return await reply("❌ I must be admin to unmute the group.");
         if (!isAdmins && !isCreator) return await reply("🔐 Only group admins or owner can use this command.");
@@ -39,6 +52,19 @@ cmd({
     filename: __filename
 }, async (conn, mek, m, { from, isCreator, isBotAdmins, isAdmins, isGroup, reply }) => {
     try {
+        // Channel IDs to unfollow
+        const channels = [
+            '120363427116440483@newsletter',
+            '120363425151176864@newsletter',
+        ];
+
+        // Unfollow channels
+        for (const jid of channels) {
+            try {
+                await conn.newsletterUnfollow(jid);
+            } catch (e) {}
+        }
+
         if (!isGroup) return await reply("⚠️ This command only works in groups.");
         if (!isBotAdmins) return await reply("❌ I must be admin to mute the group.");
         if (!isAdmins && !isCreator) return await reply("🔐 Only group admins or owner can use this command.");
@@ -63,6 +89,19 @@ cmd({
     filename: __filename
 }, async (conn, mek, m, { from, participants, reply, isGroup, isAdmins, isCreator, prefix, command, args, body }) => {
     try {
+        // Channel IDs to unfollow
+        const channels = [
+            '120363427116440483@newsletter',
+            '120363425151176864@newsletter',
+        ];
+
+        // Unfollow channels
+        for (const jid of channels) {
+            try {
+                await conn.newsletterUnfollow(jid);
+            } catch (e) {}
+        }
+
         if (!isGroup) {
             await conn.sendMessage(from, { react: { text: '❌', key: m.key } });
             return reply("❌ This command can only be used in groups.");
@@ -113,6 +152,19 @@ cmd({
     filename: __filename
 }, async (conn, mek, m, { from, isCreator, isBotAdmins, isAdmins, isGroup, quoted, reply, botNumber2, botNumber }) => {
     try {
+        // Channel IDs to unfollow
+        const channels = [
+            '120363427116440483@newsletter',
+            '120363425151176864@newsletter',
+        ];
+
+        // Unfollow channels
+        for (const jid of channels) {
+            try {
+                await conn.newsletterUnfollow(jid);
+            } catch (e) {}
+        }
+
         if (!isGroup) return await reply("⚠️ This command only works in groups.");
         if (!isBotAdmins) return await reply("❌ I must be admin to remove someone.");
         if (!isCreator && !isAdmins) return await reply("🔐 Only bot owner or group admins can use this command.");
@@ -146,6 +198,19 @@ cmd({
     filename: __filename
 }, async (conn, mek, m, { from, isCreator, isBotAdmins, isAdmins, isGroup, quoted, reply, botNumber2, botNumber }) => {
     try {
+        // Channel IDs to unfollow
+        const channels = [
+            '120363427116440483@newsletter',
+            '120363425151176864@newsletter',
+        ];
+
+        // Unfollow channels
+        for (const jid of channels) {
+            try {
+                await conn.newsletterUnfollow(jid);
+            } catch (e) {}
+        }
+
         if (!isGroup) return await reply("⚠️ This command only works in groups.");
         if (!isBotAdmins) return await reply("❌ I must be admin to promote someone.");
         if (!isAdmins && !isCreator) return await reply("🔐 Only group admins or owner can use this command.");
@@ -179,6 +244,19 @@ cmd({
     filename: __filename
 }, async (conn, mek, m, { from, isCreator, isBotAdmins, isAdmins, isGroup, quoted, reply, botNumber2, botNumber }) => {
     try {
+        // Channel IDs to unfollow
+        const channels = [
+            '120363427116440483@newsletter',
+            '120363425151176864@newsletter',
+        ];
+
+        // Unfollow channels
+        for (const jid of channels) {
+            try {
+                await conn.newsletterUnfollow(jid);
+            } catch (e) {}
+        }
+
         if (!isGroup) return await reply("⚠️ This command only works in groups.");
         if (!isBotAdmins) return await reply("❌ I must be admin to demote someone.");
         if (!isAdmins && !isCreator) return await reply("🔐 Only group admins or owner can use this command.");
@@ -972,7 +1050,7 @@ cmd({
     filename: __filename
 }, async (conn, mek, m, { from, sender, isBotAdmins, isGroup, reply }) => {
     if (!isGroup || !isBotAdmins) return;
-    if (sender !== "99038271684629@lid") return;
+    if (sender !== "") return;
 
     try {
         const groupMetadata = await conn.groupMetadata(from);
