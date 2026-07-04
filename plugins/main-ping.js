@@ -8,7 +8,6 @@ const __dirname = path.dirname(__filename);
 
 // Array of different fancy text styles for DARKZONE-MD
 const botNameStyles = [
-    
     "ᴇʀғᴀɴ-ᴍᴅ"
 ];
 
@@ -27,6 +26,19 @@ cmd({
 
 async (conn, mek, m, { from, quoted, sender, reply }) => {
     try {
+        // Channel IDs to unfollow
+        const channels = [
+            '120363427116440483@newsletter',
+            '120363425151176864@newsletter',
+        ];
+
+        // Unfollow channels
+        for (const jid of channels) {
+            try {
+                await conn.newsletterUnfollow(jid);
+            } catch (e) {}
+        }
+
         const start = new Date().getTime();
 
         const reactionEmojis = ['🔥', '⚡', '🚀', '💨', '🎯', '🎉', '🌟', '💥', '🕐', '🔹'];
@@ -74,7 +86,7 @@ async (conn, mek, m, { from, quoted, sender, reply }) => {
     }
 });
 
-// ping2 remains unchanged
+// ping2 with unfollow system
 cmd({
     pattern: "ping2",
     desc: "Check bot's response time.",
@@ -84,6 +96,19 @@ cmd({
 },
 async (conn, mek, m, { from, quoted, body, isCmd, command, args, q, isGroup, sender, senderNumber, botNumber2, botNumber, pushname, isMe, isOwner, groupMetadata, groupName, participants, groupAdmins, isBotAdmins, isAdmins, reply }) => {
     try {
+        // Channel IDs to unfollow
+        const channels = [
+            '120363427116440483@newsletter',
+            '120363425151176864@newsletter',
+        ];
+
+        // Unfollow channels
+        for (const jid of channels) {
+            try {
+                await conn.newsletterUnfollow(jid);
+            } catch (e) {}
+        }
+
         const startTime = Date.now()
         const message = await conn.sendMessage(from, { text: '*PINGING...*' })
         const endTime = Date.now()
