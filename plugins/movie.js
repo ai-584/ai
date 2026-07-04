@@ -1,4 +1,4 @@
-// ERFAN-MD - Simple Text to Image Generator
+// ERFAN-MD - AI Text to Image Generator
 import { fileURLToPath } from 'url';
 import path from 'path';
 import { cmd } from '../command.js';
@@ -8,121 +8,61 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 cmd({
-    pattern: "2img",
-    alias: ["t2i", "generate", "aiimg"],
-    desc: "Generate image from text prompt",
+    pattern: "text2img",
+    alias: ["aiimg", "genimg", "imggen", "draw"],
+    desc: "Generate AI image from text prompt",
     category: "ai",
     react: "🎨",
     filename: __filename
-}, async (conn, mek, m, { from, q, reply }) => {
+},
+async (conn, mek, m, { from, q, reply, react }) => {
     try {
+
+        // Check prompt
         if (!q) {
-            return reply(`🎨 *Text to Image*\n\nUsage: .img <prompt>\nExample: .img a beautiful sunset`);
+            return reply(
+                "❌ Please provide a prompt to generate image.\n\nExample:\n.text2img a beautiful sunset over ocean"
+            );
         }
 
-        // ── Show loading ──
-        await conn.sendMessage(from, { react: { text: '⏳', key: m.key } });
+        // React loading
+        await react("⏳");
 
-        // ── Prepare request ──
-        const prompt = encodeURIComponent(q.trim());
-        const apiUrl = `https://api-faa.my.id/faa/ai-text2img-pro?prompt=${prompt}`;
-        
-        console.log(`[IMG] Request: ${apiUrl}`);
+        // API URL with encoded prompt
+        const apiUrl = `https://api-faa.my.id/faa/ai-text2img-pro?prompt=${encodeURIComponent(q)}`;
 
-        // ── Make API request with proper headers ──
+        // Fetch image with browser headers (required to bypass Cloudflare)
         const response = await axios.get(apiUrl, {
-            timeout: 60000,
+            responseType: 'arraybuffer',
+            timeout: 120000, // 2 min timeout for image generation
             headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                'Accept': 'image/*, application/json',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+                'Accept': 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.9',
                 'Referer': 'https://api-faa.my.id/'
-            },
-            responseType: 'arraybuffer'
+            }
         });
 
-        const contentType = response.headers['content-type'] || '';
-        const data = response.data;
-        
-        console.log(`[IMG] Type: ${contentType}, Size: ${data.length} bytes`);
-
-        // ── Check if response is JSON (contains error or image URL) ──
-        if (contentType.includes('application/json')) {
-            const text = Buffer.from(data).toString('utf-8');
-            console.log(`[IMG] JSON Response: ${text.substring(0, 200)}`);
-            
-            try {
-                const json = JSON.parse(text);
-                
-                // Check for error
-                if (json.error) {
-                    return reply(`❌ ${json.error}`);
-                }
-                
-                // Try to find image URL
-                let imageUrl = json.result || json.url || json.image || json.data?.url || json.result?.url;
-                
-                if (imageUrl && typeof imageUrl === 'string' && imageUrl.startsWith('http')) {
-                    console.log(`[IMG] Found image URL: ${imageUrl}`);
-                    
-                    // Download the image
-                    const imgRes = await axios.get(imageUrl, {
-                        responseType: 'arraybuffer',
-                        timeout: 60000,
-                        headers: { 'User-Agent': 'Mozilla/5.0' }
-                    });
-                    
-                    await conn.sendMessage(from, {
-                        image: Buffer.from(imgRes.data),
-                        caption: `🎨 *${q}*`
-                    }, { quoted: mek });
-                    
-                    await conn.sendMessage(from, { react: { text: '✅', key: m.key } });
-                    return;
-                }
-                
-                return reply(`❌ ${json.message || 'Unknown error'}`);
-            } catch (e) {
-                return reply(`❌ Invalid response from API`);
-            }
+        // Validate image data
+        if (!response.data || response.data.length === 0) {
+            await react("❌");
+            return reply("❌ Failed to generate image. Empty response from API.");
         }
 
-        // ── Check if response is an image ──
-        const isImage = contentType.includes('image/') || 
-                       data[0] === 0xFF || data[0] === 0x89 || data[0] === 0x47;
+        const imageBuffer = Buffer.from(response.data);
 
-        if (!isImage || data.length < 1000) {
-            // Try to get error from text
-            const text = Buffer.from(data).toString('utf-8').substring(0, 200);
-            console.log(`[IMG] Not image: ${text}`);
-            
-            try {
-                const json = JSON.parse(text);
-                if (json.error) return reply(`❌ ${json.error}`);
-                if (json.message) return reply(`❌ ${json.message}`);
-            } catch (e) {}
-            
-            return reply(`❌ Failed to generate image. Try again.`);
-        }
-
-        // ── Send image ──
+        // Send image
         await conn.sendMessage(from, {
-            image: Buffer.from(data),
-            caption: `🎨 *${q}*`
+            image: imageBuffer,
+            caption: `🎨 *AI Generated Image*\n\n📝 *Prompt:* ${q}\n\n> *Powered by ERFAN-MD ✅*`
         }, { quoted: mek });
 
-        await conn.sendMessage(from, { react: { text: '✅', key: m.key } });
+        // Success reaction
+        await react("✅");
 
-    } catch (err) {
-        console.error("[IMG] Error:", err);
-        
-        if (err.response?.status === 403) {
-            await reply(`❌ API blocked. Try again later.`);
-        } else if (err.code === 'ECONNABORTED') {
-            await reply(`❌ Timeout. Try again.`);
-        } else {
-            await reply(`❌ Error: ${err.message || 'Try again'}`);
-        }
-        
-        await conn.sendMessage(from, { react: { text: '❌', key: m.key } });
+    } catch (e) {
+        console.log("Text2Img Error:", e.message);
+        await react("❌");
+        reply("❌ Failed to generate image. Please try again with a different prompt.");
     }
 });
