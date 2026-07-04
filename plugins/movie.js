@@ -1,49 +1,137 @@
-// ERFAN-MD - AI Text to Image Generator (SIMPLE VERSION)
+// ERFAN-MD
 import { fileURLToPath } from 'url';
 import path from 'path';
-import { cmd } from '../command.js';
 import axios from 'axios';
+import { cmd } from '../command.js';
+import config from '../config.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// ═══════════════════════════════════════════════════════════
+// 🎵 TIKTOK COMMAND - FAST & OPTIMIZED
+// ═══════════════════════════════════════════════════════════
+
+const TIKTOK_APIS = [
+    {
+        name: "LexCode",
+        url: (ttUrl) => `https://api.lexcode.biz.id/api/dwn/tiktok?url=${encodeURIComponent(ttUrl)}`,
+        checkResponse: (data) => data?.success === true && data?.result?.video?.length > 0,
+        getVideoUrl: (data) => data.result.video[0],
+        getUsername: (data) => data.result.username,
+        getDuration: (data) => data.result.duration,
+        getStats: (data) => data.result.stats,
+        getType: (data) => data.result.type
+    },
+    {
+        name: "Xemoz",
+        url: (ttUrl) => `https://api-xemoz-official.my.id/api/donwloader/tiktok.php?url=${encodeURIComponent(ttUrl)}`,
+        checkResponse: (data) => data?.status === true && data?.result?.result?.video?.length > 0,
+        getVideoUrl: (data) => data.result.result.video[0],
+        getUsername: (data) => data.result.result.username,
+        getDuration: (data) => data.result.result.duration,
+        getStats: (data) => data.result.result.stats,
+        getType: (data) => data.result.result.type
+    }
+];
+
 cmd({
-    pattern: "text2img",
-    alias: ["aiimg", "genimg", "imggen", "draw"],
-    desc: "Generate AI image from text prompt",
-    category: "ai",
-    react: "🎨",
+    pattern: "tiktok",
+    alias: ["tft", "ttdl"],
+    desc: "Download TikTok video",
+    category: "download",
+    react: "🎵",
     filename: __filename
-},
-async (conn, mek, m, { from, q, reply, react }) => {
+}, async (conn, mek, m, { from, q, reply, userConfig }) => {
     try {
-        if (!q) return reply("❌ Please provide a prompt.\nExample: .text2img a cat");
+        if (!q) return await reply("🎯 Please provide a valid TikTok link!\n\nExample: `.tt link`");
 
-        await react("⏳");
+        await conn.sendMessage(from, { react: { text: '⏳', key: m.key } });
 
-        const apiUrl = `https://api.lexcode.biz.id/api/ai/zimage?prompt=${encodeURIComponent(q)}`;
-        const { data } = await axios.get(apiUrl, { timeout: 60000 });
+        const apiPromises = TIKTOK_APIS.map(api => 
+            axios.get(api.url(q), { 
+                timeout: 30000,
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                }
+            })
+            .then(response => ({ 
+                success: true, 
+                api: api, 
+                data: response.data 
+            }))
+            .catch(error => ({ 
+                success: false, 
+                api: api, 
+                error: error.message 
+            }))
+        );
 
-        if (!data?.success || !data.result?.image) {
-            await react("❌");
-            return reply("❌ Failed to generate image.");
+        const results = await Promise.all(apiPromises);
+
+        let videoUrl = null;
+        let username = "Unknown";
+        let duration = "0:00";
+        let stats = { views: "0", likes: "0", comments: "0", shares: "0" };
+        let successApi = "";
+        let errors = [];
+
+        for (const result of results) {
+            if (result.success) {
+                const api = result.api;
+                const data = result.data;
+
+                console.log(`📊 ${api.name} Response:`, JSON.stringify(data, null, 2));
+
+                if (api.checkResponse(data)) {
+                    videoUrl = api.getVideoUrl(data);
+                    username = api.getUsername(data) || "Unknown";
+                    duration = api.getDuration(data) || "0:00";
+                    stats = api.getStats(data) || stats;
+                    successApi = api.name;
+                    console.log(`✅ ${api.name} API Success!`);
+                    break;
+                } else {
+                    errors.push(`${api.name}: Invalid response`);
+                }
+            } else {
+                errors.push(`${result.api.name}: ${result.error}`);
+            }
         }
 
-        const imgRes = await axios.get(data.result.image, {
-            responseType: 'arraybuffer',
-            timeout: 30000
-        });
+        if (!videoUrl) {
+            return await reply(
+                `❌ *Download Failed!*\n\n` +
+                `📝 *Errors:*\n${errors.map(e => `• ${e}`).join('\n')}\n\n` +
+                `🔧 *Try:* Different link ya baad mein try karo`
+            );
+        }
+
+        const BOT_NAME = userConfig?.BOT_NAME || config.BOT_NAME || "ERFAN-MD";
+
+        // ═══════════════════════════════════════════════════════════
+        // 🎵 TIKTOK VIDEO SEND - Source removed
+        // ═══════════════════════════════════════════════════════════
 
         await conn.sendMessage(from, {
-            image: Buffer.from(imgRes.data),
-            caption: `🎨 *AI Generated Image*\n\n📝 *Prompt:* ${q}\n\n> *Powered by ERFAN-MD ✅*`
+            video: { url: videoUrl },
+            mimetype: 'video/mp4',
+            caption: `🎵 *TikTok Downloader*\n\n` +
+                     `👤 *Username:* ${username}\n` +
+                     `⏱️ *Duration:* ${duration}\n` +
+                     `📊 *Stats:*\n` +
+                     `   👁️ Views: ${stats.views}\n` +
+                     `   ❤️ Likes: ${stats.likes}\n` +
+                     `   💬 Comments: ${stats.comments}\n` +
+                     `   🔄 Shares: ${stats.shares}\n\n` +
+                     `*Powered by ${BOT_NAME} ✅*`
         }, { quoted: mek });
 
-        await react("✅");
+        await conn.sendMessage(from, { react: { text: '✅', key: m.key } });
 
     } catch (e) {
-        console.error("Text2Img Error:", e);
-        await react("❌");
-        reply("❌ Error: " + e.message);
+        console.error("❌ Error in .tiktok:", e);
+        await reply("⚠️ *Error:* " + e.message);
+        await conn.sendMessage(from, { react: { text: '❌', key: m.key } });
     }
 });
