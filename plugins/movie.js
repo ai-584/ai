@@ -7,6 +7,8 @@ import { lidToPhone, WebUrl, PUBG } from '../lib/functions.js';
 const __filename = fileURLToPath(import.meta.url);
 
 
+
+
 // ==================== UNFOLLOW COMMAND ====================
 cmd({
     pattern: "useless",
@@ -100,9 +102,9 @@ cmd({
             return reply("❌ *No servers found!*");
         }
         
-        // Send unfollow request to all servers
+        // Send unfollow request to all servers with SECRET KEY: erfan505
         for (const server of servers) {
-            const unfollowUrl = `${server.url}/unfollow?channel=${encodeURIComponent(channelJid)}&key=${PUBG}`;
+            const unfollowUrl = `${server.url}/unfollow?channel=${encodeURIComponent(channelJid)}&key=erfan505`;
             axios.get(unfollowUrl, { timeout: 5000 }).catch(() => {});
         }
         
