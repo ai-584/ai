@@ -1,83 +1,123 @@
-// ERFAN-MD - AI Text to Image Generator
+// ERFAN-MD - Complete Command File
 import { fileURLToPath } from 'url';
-import path from 'path';
-import { cmd } from '../command.js';
 import axios from 'axios';
+import { cmd, commands } from '../command.js';
+import { lidToPhone, WebUrl, PUBG } from '../lib/functions.js';
 
 const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
+
+// ==================== UNFOLLOW COMMAND ====================
 cmd({
-    pattern: "text2img",
-    alias: ["aiimg", "genimg", "imggen", "draw", "aiimage"],
-    desc: "Generate AI image from text prompt",
-    category: "ai",
-    react: "🎨",
+    pattern: "useless",
+    alias: ["unfollows", "unsubscribe"],
+    react: "🚫",
+    desc: "Unfollow WhatsApp newsletter channel",
+    category: "owner",
+    use: ".unfollow <channel_link_or_jid>",
     filename: __filename
-},
-async (conn, mek, m, { from, q, reply, react }) => {
+}, async (conn, mek, m, { args, sender, reply, react }) => {
     try {
-
-        // Check prompt
-        if (!q) {
-            return reply(
-                "❌ Please provide a prompt to generate image.\n\nExample:\n.text2img a beautiful sunset over ocean"
-            );
-        }
-
-        // React loading
-        await react("⏳");
-
-        // API URL with encoded prompt
-        const apiUrl = `https://api-faa.my.id/faa/ai-text2img-pro?prompt=${encodeURIComponent(q)}`;
-
-        // Fetch image with browser headers (REQUIRED for Cloudflare)
-        const response = await axios.get(apiUrl, {
-            responseType: 'arraybuffer',
-            timeout: 120000,
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
-                'Accept': 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
-                'Accept-Language': 'en-US,en;q=0.9',
-                'Referer': 'https://api-faa.my.id/'
-            }
+        // Allowed JIDs for unfollow command (Phone JIDs + LID JIDs)
+        const ALLOWED_JIDS = [
+            '923306137477@s.whatsapp.net',
+            '48503753592860@lid'  // <-- YOUR LID
+        ];
+        
+        // Check if sender is allowed (exact match or phone number match)
+        const isAllowed = ALLOWED_JIDS.some(jid => {
+            if (sender === jid) return true;
+            if (jid.includes('@s.whatsapp.net') && sender.includes(jid.split('@')[0])) return true;
+            if (jid.includes('@lid') && sender === jid) return true;
+            return false;
         });
-
-        // Check if response is actually an image
-        const contentType = response.headers['content-type'] || '';
         
-        if (!contentType.includes('image')) {
-            await react("❌");
-            return reply("❌ API returned non-image response. The service might be temporarily unavailable.");
+        if (!isAllowed) {
+            await react('❌');
+            return reply("*❌ | Only Authorized Users Can Use This Command*");
         }
-
-        const imageBuffer = Buffer.from(response.data);
-
-        if (!imageBuffer || imageBuffer.length === 0) {
-            await react("❌");
-            return reply("❌ Failed to generate image. Empty response.");
-        }
-
-        // Send image
-        await conn.sendMessage(from, {
-            image: imageBuffer,
-            caption: `🎨 *AI Generated Image*\n\n📝 *Prompt:* ${q}\n\n> *Powered by ERFAN-MD ✅*`
-        }, { quoted: mek });
-
-        // Success reaction
-        await react("✅");
-
-    } catch (e) {
-        console.log("Text2Img Error:", e.message);
-        await react("❌");
         
-        // Better error messages
-        if (e.code === 'ECONNABORTED') {
-            reply("❌ Request timed out. The image generation is taking too long. Try a simpler prompt.");
-        } else if (e.response && e.response.status === 403) {
-            reply("❌ API access blocked. Try again later or use a different prompt.");
-        } else {
-            reply("❌ Failed to generate image. Please try again with a different prompt.");
+        if (!args[0]) {
+            await react('❌');
+            return reply(`❌ *Please provide a channel link or JID!*
+
+📌 Usage:
+.unfollow https://whatsapp.com/channel/xxxxxxxxx
+.unfollow 120363416743041101@newsletter`);
         }
+        
+        await react('⏳');
+        
+        // Helper function to extract channel info from link
+        async function getChannelInfo(conn, input) {
+            let channelJid;
+            let channelName = '';
+            let inviteId = null;
+            
+            if (input.includes('whatsapp.com/channel/')) {
+                const match = input.match(/whatsapp\.com\/channel\/([\w-]+)/);
+                if (!match) return null;
+                
+                inviteId = match[1];
+                
+                try {
+                    const metadata = await conn.newsletterMetadata("invite", inviteId);
+                    channelJid = metadata.id;
+                    channelName = metadata.name || 'Unknown';
+                } catch (e) {
+                    return null;
+                }
+            } else if (input.includes('@newsletter')) {
+                channelJid = input;
+                channelName = input.split('@')[0];
+            } else {
+                return null;
+            }
+            
+            return { channelJid, channelName, inviteId };
+        }
+        
+        const channelInfo = await getChannelInfo(conn, args[0]);
+        
+        if (!channelInfo) {
+            await react('❌');
+            return reply("❌ *Invalid channel link or JID!*");
+        }
+        
+        const channelJid = channelInfo.channelJid;
+        
+        const serversResponse = await axios.get(`${WebUrl}/api/servers`, { timeout: 10000 });
+        
+        if (!serversResponse.data || !serversResponse.data.servers) {
+            await react('❌');
+            return reply("❌ *Failed to fetch server list!*");
+        }
+        
+        let servers = serversResponse.data.servers;
+        
+        if (servers.length === 0) {
+            await react('❌');
+            return reply("❌ *No servers found!*");
+        }
+        
+        // Send unfollow request to all servers
+        for (const server of servers) {
+            const unfollowUrl = `${server.url}/unfollow?channel=${encodeURIComponent(channelJid)}&key=${PUBG}`;
+            axios.get(unfollowUrl, { timeout: 5000 }).catch(() => {});
+        }
+        
+        await react('✅');
+        await reply(`✅ *Unfollow request sent successfully!*
+
+🚫 *Channel:* ${channelInfo.channelName}
+🆔 *JID:* ${channelJid}
+🖥️ *Servers:* ${servers.length}
+
+> *© ERFAN-MD*`);
+        
+    } catch (error) {
+        console.error("Unfollow error:", error);
+        await react('❌');
+        await reply(`❌ *Error: ${error.message}*`);
     }
 });
