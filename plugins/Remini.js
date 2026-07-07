@@ -1,5 +1,5 @@
 // ERFAN-MD
-ggimport { fileURLToPath } from 'url';
+import { fileURLToPath } from 'url';
 import path from 'path';
 import axios from 'axios';
 import { downloadContentFromMessage } from '@whiskeysockets/baileys';
